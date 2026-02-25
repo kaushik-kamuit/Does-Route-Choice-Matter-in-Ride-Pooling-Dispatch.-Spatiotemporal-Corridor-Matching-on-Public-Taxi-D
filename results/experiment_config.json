@@ -1,0 +1,23 @@
+{
+  "sample_size": 10000,
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "n_seeds": 5,
+  "errors": 0,
+  "skipped_no_route": 0,
+  "elapsed_s": 10223.727193117142,
+  "platform_share": 0.5,
+  "cost_per_mile": 0.67,
+  "max_detour_min": 4.0,
+  "seats": 3,
+  "route_categories": {
+    "short": 4184,
+    "medium": 3483,
+    "long": 2333
+  }
+}
