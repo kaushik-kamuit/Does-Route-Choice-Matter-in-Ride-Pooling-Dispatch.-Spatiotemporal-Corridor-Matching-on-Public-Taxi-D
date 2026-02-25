@@ -1,9 +1,13 @@
 # Data files
 data/raw/
 data/processed/
+data/route_cache.json
 *.parquet
 *.db
 *.db-journal
+
+# OSRM data
+osrm/data/
 
 # Python
 __pycache__/
