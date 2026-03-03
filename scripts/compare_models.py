@@ -166,6 +166,7 @@ def train_lgb_lambdarank(X, y, df, train_idx, val_idx, feat_cols):
     tr_df = df.iloc[train_idx].reset_index(drop=True)
     va_df = df.iloc[val_idx].reset_index(drop=True)
 
+    va_df["_orig_idx"] = np.arange(len(va_df))
     tr_sorted = tr_df.sort_values("driver_id").reset_index(drop=True)
     va_sorted = va_df.sort_values("driver_id").reset_index(drop=True)
 
@@ -210,7 +211,11 @@ def train_lgb_lambdarank(X, y, df, train_idx, val_idx, feat_cols):
                       valid_sets=[dval], valid_names=["val"],
                       callbacks=[lgb.early_stopping(60, verbose=False), _lgb_progress(200)])
 
-    raw_scores = model.predict(X[val_idx])
+    raw_scores_sorted = model.predict(X_va)
+
+    orig_order = va_sorted["_orig_idx"].values
+    raw_scores = np.empty(len(raw_scores_sorted), dtype=np.float32)
+    raw_scores[orig_order] = raw_scores_sorted
     return model, raw_scores
 
 

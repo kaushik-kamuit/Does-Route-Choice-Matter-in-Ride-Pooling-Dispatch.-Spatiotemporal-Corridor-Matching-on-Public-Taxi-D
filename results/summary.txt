@@ -5,71 +5,71 @@ STATISTICAL SUMMARY: Cold-Start vs Warm-Up
 --- OVERALL ---
                        Cold-Start      Warm-Up
 --------------------------------------------------
-  Mean profit                     29.78        30.83
+  Mean profit                     29.90        31.01
   Mean matched_riders              2.52         2.52
-  Mean total_revenue              38.95        40.17
-  Mean driving_cost                9.17         9.34
-  Match rate (%)               99.2         99.4
-  Median profit                29.11        30.05
-  Std profit                16.37        16.17
-  Min profit               -18.91       -12.84
-  Max profit                92.00       100.68
-  Wilcoxon test:   W=358126, p=9.10e-13
+  Mean total_revenue              39.05        40.30
+  Mean driving_cost                9.15         9.29
+  Match rate (%)               99.3         99.5
+  Median profit                29.37        30.57
+  Std profit                16.28        16.15
+  Min profit               -19.88       -12.84
+  Max profit                96.98       100.52
+  Wilcoxon test:   W=651696, p=5.55e-23
 
-  Paired t-test:   t=6.182, p=7.21e-10
-  Mean difference: $1.05 (WU - CS)
-  N drivers:       3,000
+  Paired t-test:   t=9.242, p=3.51e-20
+  Mean difference: $1.10 (WU - CS)
+  N drivers:       5,000
 
 --- ROUTE LENGTH: SHORT ---
                        Cold-Start      Warm-Up
 --------------------------------------------------
-  Mean profit                     35.87        36.79
-  Mean matched_riders              2.56         2.54
-  Mean total_revenue              42.31        43.54
-  Mean driving_cost                6.44         6.75
-  Match rate (%)               99.4         99.5
-  Median profit                36.34        36.79
-  Std profit                14.92        15.11
-  Min profit                -7.70        -7.70
-  Max profit                74.36       100.68
-  Wilcoxon test:   W=82229, p=1.75e-04
+  Mean profit                     35.55        36.60
+  Mean matched_riders              2.54         2.53
+  Mean total_revenue              42.00        43.24
+  Mean driving_cost                6.45         6.63
+  Match rate (%)               99.5         99.5
+  Median profit                36.04        36.94
+  Std profit                15.25        15.06
+  Min profit                -7.70        -7.74
+  Max profit                96.98        96.98
+  Wilcoxon test:   W=154583, p=3.98e-09
 
-  Paired t-test:   t=3.709, p=2.18e-04
-  Mean difference: $0.92 (WU - CS)
-  N drivers:       1,223
+  Paired t-test:   t=5.920, p=3.75e-09
+  Mean difference: $1.05 (WU - CS)
+  N drivers:       2,072
 
 --- ROUTE LENGTH: MEDIUM ---
                        Cold-Start      Warm-Up
 --------------------------------------------------
-  Mean profit                     25.55        26.61
-  Mean matched_riders              2.49         2.50
-  Mean total_revenue              35.91        36.99
-  Mean driving_cost               10.36        10.39
-  Match rate (%)               99.0         99.2
-  Median profit                24.97        25.76
-  Std profit                15.41        15.39
+  Mean profit                     25.84        27.07
+  Mean matched_riders              2.51         2.52
+  Mean total_revenue              36.20        37.50
+  Mean driving_cost               10.36        10.44
+  Match rate (%)               99.1         99.4
+  Median profit                25.17        26.27
+  Std profit                15.32        15.59
   Min profit               -11.51       -10.68
   Max profit                92.00       100.52
-  Wilcoxon test:   W=27943, p=6.81e-06
+  Wilcoxon test:   W=46008, p=1.64e-11
 
-  Paired t-test:   t=3.848, p=1.26e-04
-  Mean difference: $1.06 (WU - CS)
-  N drivers:       1,040
+  Paired t-test:   t=6.408, p=1.89e-10
+  Mean difference: $1.23 (WU - CS)
+  N drivers:       1,737
 
 --- ROUTE LENGTH: LONG ---
                        Cold-Start      Warm-Up
 --------------------------------------------------
-  Mean profit                     25.67        26.90
-  Mean matched_riders              2.51         2.51
-  Mean total_revenue              37.67        39.06
-  Mean driving_cost               12.00        12.16
-  Match rate (%)               98.9         99.5
-  Median profit                22.88        24.95
-  Std profit                16.81        15.86
-  Min profit               -18.91       -12.84
-  Max profit                90.29        91.37
-  Wilcoxon test:   W=21645, p=7.17e-05
+  Mean profit                     26.00        27.01
+  Mean matched_riders              2.52         2.52
+  Mean total_revenue              38.07        39.26
+  Mean driving_cost               12.07        12.25
+  Match rate (%)               99.1         99.7
+  Median profit                23.76        24.97
+  Std profit                16.48        15.92
+  Min profit               -19.88       -12.84
+  Max profit                90.29       100.16
+  Wilcoxon test:   W=40530, p=1.63e-05
 
-  Paired t-test:   t=3.146, p=1.72e-03
-  Mean difference: $1.23 (WU - CS)
-  N drivers:       737
+  Paired t-test:   t=3.629, p=2.97e-04
+  Mean difference: $1.01 (WU - CS)
+  N drivers:       1,191

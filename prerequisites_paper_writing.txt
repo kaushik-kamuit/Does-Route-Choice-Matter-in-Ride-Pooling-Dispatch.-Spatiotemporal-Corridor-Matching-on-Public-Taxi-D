@@ -1,0 +1,34 @@
+PREREQUISITES FOR EMPIRICAL PAPER WRITING
+(For WhatsApp / email to info@phdwritingassistance.com)
+----------------------------------------------------------
+
+1. Research area or Title
+   ML-guided route selection vs cold-start in real-time carpooling: evidence from rider density experiments (NYC TLC data).
+
+   Alternative short title: Warm-up vs cold-start route selection for carpooling profit: an empirical study.
+
+2. Data and results which you have done
+   - Data: NYC TLC taxi/rideshare-style data (drivers, riders, trips). Processed into ~1.8M driver trips, 1M riders; H3 spatial indexing; OSRM road-network routing (3 alternative routes per OD).
+   - Training: 50K drivers → enhanced v2 dataset (108K rows, 38+ features) → LightGBM profit predictor (R² ~0.76, RMSE ~$8.44).
+   - Experiments: 5,000 test drivers × 5 seeds, 5 strategies (cold-start, random, heuristic, ML warm-up, oracle). Run at 100%, 75%, 50%, 25%, and 10% rider density.
+   - Results: (i) Warm-up beats cold-start at every density (paired t-test p ~ 3.5e-20 at 100%). (ii) Advantage increases at lower density: +$2.21 at 10% density (17.5% relative) vs +$1.10 at 100% (3.7%). (iii) Oracle gap $3.97; ML captures ~28%. (iv) Summaries, CSVs, and figures in results/ (extended_summary.txt, density_results.csv, density_advantage.png, baseline_comparison.png, etc.).
+
+3. Targeted Journal [if any]
+   Transportation Research Part C: Emerging Technologies; or IEEE Transactions on Intelligent Transportation Systems; or to be decided after discussion.
+
+4. Base or reference papers [if any]
+   Ride-pooling and matching: e.g. Alonso-Mora et al. (on-demand mobility), dynamic matching/assignment in ride-hailing. Route choice and corridor demand: papers on route recommendation, spatial demand prediction, and profit/revenue optimisation in mobility. NYC TLC / taxi data studies where relevant. (Exact references to be finalised with the writing team.)
+
+5. Deadline to complete
+   Flexible; target 3 months from start of writing, or as per your standard timeline.
+
+6. When you are planning to start the work (tentative date)
+   Within 2–4 weeks of confirmation and agreement on pricing; or as soon as your schedule permits.
+
+7. Methodology, objectives and research gap which you have done so far
+   - Objective: Show that ML-guided route selection (“warm-up”) yields higher profit than default routing (“cold-start”) in carpooling, and that this advantage is larger at lower rider density.
+   - Methodology: (i) Build enhanced training data (spatial/temporal/geometric features, no leaky match counts). (ii) Train LightGBM to predict profit per route. (iii) Simulation: for each test driver, generate 3 OSRM alternative routes; cold-start uses default route; warm-up uses ML to pick route with highest predicted profit; oracle picks route with highest actual profit (upper bound). (iv) Paired design (same drivers, riders, seeds); statistical tests (paired t-test, Wilcoxon, Cohen’s d, 95% CIs). (v) Rider density experiments (100%, 75%, 50%, 25%, 10%) to test when route choice matters most.
+   - Research gap addressed: Prior work often focuses on matching or pricing; we focus on route selection given multiple alternatives and show that ML-based selection improves profit and that the gain is density-dependent (larger when rider supply is sparser).
+
+----------------------------------------------------------
+Copy the sections above into an email to info@phdwritingassistance.com or send as a WhatsApp message. Adjust dates (5–6) and reference list (4) to your actual choices if needed.

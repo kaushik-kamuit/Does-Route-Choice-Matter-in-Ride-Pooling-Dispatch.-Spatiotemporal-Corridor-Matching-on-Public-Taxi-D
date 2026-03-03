@@ -1,9 +1,9 @@
 """
 Train a LightGBM regressor to predict expected profit for a driver-route pair.
 
-Input:  data/ml/training_dataset.parquet  (from build_dataset.py)
-Output: models/profit_model.pkl           (joblib-serialised LightGBM booster)
-        models/feature_importance.csv
+Input:  data/ml/training_dataset_v2.parquet  (from build_enhanced_dataset.py)
+Output: models/profit_model_v2.pkl           (joblib-serialised LightGBM booster)
+        models/feature_importance_v2.csv
 
 Uses GroupShuffleSplit by driver_id so no driver appears in both train and val
 sets (prevents data leakage from multiple routes per driver).

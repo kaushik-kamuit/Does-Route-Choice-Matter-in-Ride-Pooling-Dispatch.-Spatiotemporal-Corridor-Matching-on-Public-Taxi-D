@@ -75,4 +75,5 @@ def run_coldstart(
         compute_time_s=elapsed,
         route_length_category=driver.route_length_category,
         seed=seed,
+        hour=driver.hour,
     )

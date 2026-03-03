@@ -26,10 +26,12 @@ from spatial.router import OSRMRouter, RouteInfo
 from .data_types import DriverTrip, DriverOutcome
 
 LANDMARKS = {
-    "jfk":       (40.6413, -73.7781),
-    "lga":       (40.7769, -73.8740),
-    "penn":      (40.7505, -73.9935),
-    "times_sq":  (40.7580, -73.9855),
+    "jfk":         (40.6413, -73.7781),
+    "lga":         (40.7769, -73.8740),
+    "penn":        (40.7505, -73.9935),
+    "times_sq":    (40.7580, -73.9855),
+    "grand_cntrl": (40.7527, -73.9772),
+    "world_trade": (40.7127, -74.0134),
 }
 
 
@@ -201,6 +203,9 @@ def run_warmup(
         ]
         ranking = predictor.rank_routes(feature_list)
 
+    if not ranking:
+        return None
+
     best_idx, predicted_profit = ranking[0]
 
     best_route = routes[best_idx]
@@ -236,4 +241,5 @@ def run_warmup(
         compute_time_s=elapsed,
         route_length_category=driver.route_length_category,
         seed=seed,
+        hour=driver.hour,
     )

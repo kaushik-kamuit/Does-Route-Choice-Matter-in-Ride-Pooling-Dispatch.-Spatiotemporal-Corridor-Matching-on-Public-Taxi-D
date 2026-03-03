@@ -10,10 +10,13 @@ import joblib
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.model_selection import GroupShuffleSplit
 
-ds = pd.read_parquet(ROOT / "data/ml/training_dataset.parquet")
-print("=== DATASET SHAPE ===")
+ds = pd.read_parquet(ROOT / "data/ml/training_dataset_v2.parquet")
+print("=== DATASET SHAPE (v2) ===")
 print(f"Rows: {len(ds):,}  Cols: {len(ds.columns)}")
 print(f"Columns: {list(ds.columns)}")
+
+EXCLUDE_COLS = {"driver_id", "route_idx", "expected_revenue", "driver_cost", "expected_profit"}
+feats = [c for c in ds.columns if c not in EXCLUDE_COLS]
 
 print("\n=== TARGET STATS ===")
 t = ds["expected_profit"]
@@ -21,17 +24,9 @@ print(f"mean={t.mean():.2f} median={t.median():.2f} std={t.std():.2f} min={t.min
 print(f"zeros: {(t == 0).sum()}  negatives: {(t < 0).sum()}")
 
 print("\n=== FEATURE CORRELATIONS WITH TARGET ===")
-feats = ["route_distance_m", "route_duration_s", "corridor_cell_count", "hour_of_day",
-         "day_of_week", "is_weekend", "corridor_rider_count", "corridor_demand_density",
-         "mean_rider_fare", "corridor_fare_density", "feasible_rider_count", "matched_rider_count"]
 for f in feats:
     corr = ds[f].corr(ds["expected_profit"])
-    print(f"  {f:30s} r={corr:+.4f}")
-
-print("\n=== MATCHED_RIDER_COUNT DISTRIBUTION ===")
-m = ds["matched_rider_count"]
-for v in range(4):
-    print(f"  {v} riders: {(m == v).sum():,} ({(m == v).mean() * 100:.1f}%)")
+    print(f"  {f:35s} r={corr:+.4f}")
 
 print("\n=== ROUTES PER DRIVER ===")
 rpd = ds.groupby("driver_id")["route_idx"].count()
@@ -49,7 +44,6 @@ print(f"  Mean within-driver profit range: ${diff['range'].mean():.2f}")
 print(f"  Median within-driver profit range: ${diff['range'].median():.2f}")
 print(f"  Drivers with zero range: {(diff['range'] == 0).sum():,}")
 
-print("\n=== MODEL ABLATION: REMOVE matched_rider_count + feasible_rider_count ===")
 SPLIT_SEED = 42
 VAL_FRAC = 0.20
 
@@ -59,61 +53,33 @@ groups = ds["driver_id"].values
 gss = GroupShuffleSplit(n_splits=1, test_size=VAL_FRAC, random_state=SPLIT_SEED)
 train_idx, val_idx = next(gss.split(X_all, y, groups=groups))
 
-model_full = joblib.load(ROOT / "models/profit_model.pkl")
-y_pred_full = model_full.predict(X_all[val_idx])
-r2_full = r2_score(y[val_idx], y_pred_full)
-rmse_full = np.sqrt(mean_squared_error(y[val_idx], y_pred_full))
+model_v2 = joblib.load(ROOT / "models/profit_model_v2.pkl")
+y_pred_v2 = model_v2.predict(X_all[val_idx])
+r2_v2 = r2_score(y[val_idx], y_pred_v2)
+rmse_v2 = np.sqrt(mean_squared_error(y[val_idx], y_pred_v2))
 
-feats_no_match = [f for f in feats if f not in ("matched_rider_count", "feasible_rider_count")]
-print(f"  Features (no match): {feats_no_match}")
+print(f"\n=== V2 MODEL METRICS ===")
+print(f"  V2 model ({len(feats)} features): R²={r2_v2:.4f}  RMSE=${rmse_v2:.2f}")
 
+print("\n=== RANK ACCURACY ===")
+val_df = ds.iloc[val_idx].copy()
+val_df["pred"] = model_v2.predict(X_all[val_idx])
+correct, total = 0, 0
+for _, grp in val_df.groupby("driver_id"):
+    if len(grp) < 2:
+        continue
+    total += 1
+    if grp["expected_profit"].idxmax() == grp["pred"].idxmax():
+        correct += 1
+acc = correct / total if total > 0 else 0
+print(f"  Rank-1 accuracy = {acc:.1%} ({correct:,}/{total:,})")
+
+print("\n=== FEATURE IMPORTANCE: V2 MODEL ===")
 import lightgbm as lgb
-LGB_PARAMS = {
-    "objective": "regression", "metric": "rmse",
-    "learning_rate": 0.05, "num_leaves": 63, "max_depth": 8,
-    "min_child_samples": 50, "subsample": 0.8, "colsample_bytree": 0.8,
-    "reg_alpha": 0.1, "reg_lambda": 1.0, "verbose": -1,
-}
-
-X_nm = ds[feats_no_match].values
-dtrain_nm = lgb.Dataset(X_nm[train_idx], label=y[train_idx], feature_name=feats_no_match, free_raw_data=False)
-dval_nm = lgb.Dataset(X_nm[val_idx], label=y[val_idx], feature_name=feats_no_match, reference=dtrain_nm, free_raw_data=False)
-model_nm = lgb.train(LGB_PARAMS, dtrain_nm, num_boost_round=1000,
-                     valid_sets=[dval_nm], valid_names=["val"],
-                     callbacks=[lgb.early_stopping(50, verbose=False)])
-y_pred_nm = model_nm.predict(X_nm[val_idx])
-r2_nm = r2_score(y[val_idx], y_pred_nm)
-rmse_nm = np.sqrt(mean_squared_error(y[val_idx], y_pred_nm))
-
-print(f"\n  Full model  (12 features): R²={r2_full:.4f}  RMSE=${rmse_full:.2f}")
-print(f"  No-match model (10 feats): R²={r2_nm:.4f}  RMSE=${rmse_nm:.2f}")
-print(f"  Delta R²: {r2_full - r2_nm:.4f}")
-print(f"  Delta RMSE: ${rmse_nm - rmse_full:.2f}")
-
-print("\n=== RANK ACCURACY COMPARISON ===")
-for label, model_obj, X_use, feat_names in [
-    ("Full (12 feats)", model_full, X_all, feats),
-    ("No-match (10 feats)", model_nm, X_nm, feats_no_match),
-]:
-    val_df = ds.iloc[val_idx].copy()
-    val_df["pred"] = model_obj.predict(X_use[val_idx])
-    correct, total = 0, 0
-    for _, grp in val_df.groupby("driver_id"):
-        if len(grp) < 2:
-            continue
-        total += 1
-        actual_best = grp["expected_profit"].idxmax()
-        pred_best = grp["pred"].idxmax()
-        if actual_best == pred_best:
-            correct += 1
-    acc = correct / total if total > 0 else 0
-    print(f"  {label:25s}: rank-1 accuracy = {acc:.1%} ({correct:,}/{total:,})")
-
-print("\n=== FEATURE IMPORTANCE: NO-MATCH MODEL ===")
 imp = pd.DataFrame({
-    "feature": feats_no_match,
-    "importance": model_nm.feature_importance(importance_type="gain"),
+    "feature": feats,
+    "importance": model_v2.feature_importance(importance_type="gain"),
 }).sort_values("importance", ascending=False)
 for _, row in imp.iterrows():
     bar = "#" * int(row["importance"] / imp["importance"].max() * 40)
-    print(f"  {row['feature']:30s} {row['importance']:>10.0f}  {bar}")
+    print(f"  {row['feature']:35s} {row['importance']:>10.0f}  {bar}")

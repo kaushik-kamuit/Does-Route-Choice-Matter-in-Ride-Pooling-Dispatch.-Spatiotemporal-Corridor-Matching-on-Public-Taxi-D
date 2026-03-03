@@ -20,6 +20,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -32,8 +34,14 @@ PLOTS_DIR = RESULTS_DIR / "plots"
 
 CATEGORY_ORDER = ["short", "medium", "long"]
 STRATEGY_ORDER = ["coldstart", "warmup"]
-STRATEGY_LABELS = {"coldstart": "Cold-Start", "warmup": "Warm-Up"}
-PALETTE = {"coldstart": "#4C72B0", "warmup": "#DD8452"}
+STRATEGY_LABELS = {
+    "coldstart": "Cold-Start", "warmup": "Warm-Up",
+    "random": "Random", "heuristic": "Heuristic", "oracle": "Oracle",
+}
+PALETTE = {
+    "coldstart": "#4C72B0", "warmup": "#DD8452",
+    "random": "#8DA0CB", "heuristic": "#66C2A5", "oracle": "#E78AC3",
+}
 
 plt.rcParams.update({
     "figure.dpi": 150,

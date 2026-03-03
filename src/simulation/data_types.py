@@ -59,6 +59,7 @@ class DriverOutcome:
     compute_time_s: float
     route_length_category: str
     seed: int = 0
+    hour: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -74,4 +75,5 @@ class DriverOutcome:
             "compute_time_s": self.compute_time_s,
             "route_length_category": self.route_length_category,
             "seed": self.seed,
+            "hour": self.hour,
         }
