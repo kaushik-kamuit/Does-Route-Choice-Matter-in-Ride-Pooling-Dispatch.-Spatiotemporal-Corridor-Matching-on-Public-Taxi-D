@@ -2,7 +2,7 @@
 
 An experimental system demonstrating that ML-guided route selection ("warm-up") produces statistically significant higher profit than naive default routing ("cold-start") in a real-time carpooling context. Built on NYC TLC taxi data, H3 spatial indexing, OSRM road-network routing, and a LightGBM profit predictor.
 
-**Core result:** Using an enhanced v2 feature set (38 non-leaky features), warm-up achieves statistically significant higher profit than cold-start, validated across 10,000 test drivers, 5 seeds, and 5 strategy baselines (cold-start, random, heuristic, ML warm-up, oracle). See [Results](#10-results) for detailed numbers.
+**Core result:** Using an enhanced v2 feature set (38 non-leaky features), warm-up achieves statistically significant higher profit than cold-start, validated across 5,000 test drivers, 5 seeds, and 5 strategy baselines (cold-start, random, heuristic, ML warm-up, oracle). See [Results](#10-results) for detailed numbers.
 
 ---
 
@@ -54,7 +54,7 @@ Both strategies share the **exact same OSRM `alt=3` request**. Cold-start uses `
 
 ### Paired Design
 
-For each of the 10,000 test drivers:
+For each of the 5,000 test drivers used in the paper runs:
 - Both strategies see the same driver (same origin, destination, time).
 - Both strategies see the same rider pool (same `RiderIndex` snapshot).
 - Both strategies use the same 5 seeds (controlling tie-breaking randomness).
@@ -310,7 +310,7 @@ Riders are assigned seats greedily until the vehicle capacity (3 seats) is fille
 
 **Why LightGBM:** Gradient-boosted trees excel at tabular data with mixed feature types. Fast training (~4 minutes for 217K rows), low inference latency (microseconds per prediction), and inherent feature importance. No feature scaling or encoding required.
 
-**Why not neural networks:** The dataset is pure tabular (38 numeric features). A model comparison study confirmed LightGBM (67.6% rank accuracy) outperforms MLP (64.2%), consistent with literature on GBDTs dominating tabular data.
+**Why not neural networks:** The dataset is pure tabular (38 numeric features). A model comparison study confirmed LightGBM (~68% rank accuracy) outperforms MLP (64.2%), consistent with literature on GBDTs dominating tabular data.
 
 **Why not linear regression:** The relationship between corridor geometry, temporal patterns, and profit is non-linear. A linear model would miss interaction effects (e.g., high demand density at rush hour on short routes).
 
@@ -373,7 +373,7 @@ This is **better than v1** (R²=0.77) despite removing the leaky features, provi
 The simulation iterates over drivers (outer loop) and seeds (inner loop):
 
 ```
-for each driver (10,000):
+for each driver (5,000 in the paper results; 10,000 is also supported by the runner):
     # Compute once (seed-independent):
     routes      = fetch 3 alternatives from cache
     corridors   = build 3 H3 corridors
@@ -415,7 +415,7 @@ The v2 warm-up pipeline computes features from route geometry, temporal context,
 
 ```json
 {
-  "sample_size": 10000,
+  "sample_size": 5000,
   "seeds": [42, 43, 44, 45, 46],
   "platform_share": 0.50,
   "cost_per_mile": 0.67,
@@ -437,11 +437,11 @@ cs_agg = coldstart_df.groupby("driver_id")["profit"].mean()
 wu_agg = warmup_df.groupby("driver_id")["profit"].mean()
 ```
 
-This produces 10,000 paired observations (one per driver), preventing pseudoreplication.
+This produces 5,000 paired observations (one per driver), preventing pseudoreplication.
 
 ### 9.2 Tests Performed
 
-**Paired t-test** (`scipy.stats.ttest_rel`): Tests whether the mean difference (warm-up − cold-start) is significantly different from zero. Assumes normally distributed differences. With n=10,000, the Central Limit Theorem ensures the sampling distribution of the mean is approximately normal regardless of the underlying distribution.
+**Paired t-test** (`scipy.stats.ttest_rel`): Tests whether the mean difference (warm-up minus cold-start) is significantly different from zero. Assumes normally distributed differences. With n=5,000, the Central Limit Theorem still makes the sampling distribution of the mean approximately normal regardless of the underlying distribution.
 
 **Wilcoxon signed-rank test** (`scipy.stats.wilcoxon`): Non-parametric alternative. Does not assume normality. Tests whether the distribution of differences is symmetric around zero. Included as a robustness check.
 
@@ -451,7 +451,7 @@ If both tests agree, the result is robust regardless of distributional assumptio
 
 ### 9.4 Effect Size Metrics
 
-Beyond p-values (which are guaranteed to be small with n=10,000), the extended summary reports:
+Beyond p-values (which are guaranteed to be small with n=5,000), the extended summary reports:
 - **Cohen's d** (standardized effect size)
 - **95% bootstrap confidence intervals** on the mean difference (10,000 resamples)
 - **Winner/loser analysis** (what % of drivers benefit, and by how much)
@@ -463,7 +463,7 @@ See `results/extended_summary.txt` for full details.
 
 ## 10. Results
 
-Results are generated from the v2 model (38 non-leaky features, R²=0.79) with 5 strategy baselines across 10,000 test drivers and 5 seeds. Full numerical results are in `results/extended_summary.txt` and `results/summary.txt`.
+Results are generated from the v2 model (38 non-leaky features, R²=0.79) with 5 strategy baselines across 5,000 test drivers and 5 seeds. Full numerical results are in `results/extended_summary.txt` and `results/summary.txt`.
 
 ### 10.1 Strategy Comparison
 
@@ -510,7 +510,7 @@ The oracle gap analysis shows what fraction of the theoretical maximum improveme
 
 ### 10.4 Interpretation of Plots
 
-**Baseline comparison** (`results/plots/baseline_comparison.png`): Mean profit for all 5 strategies with 95% CI, showing the progression from cold-start through heuristic to ML to oracle.
+**Baseline comparison** (`results/plots/baseline_comparison.png`): Mean profit for all 5 strategies with 95% CI, showing the progression from cold-start through heuristic to ML to oracle. At 100% density the key caveat is that the heuristic already captures +$1.00/trip versus +$1.10/trip for ML, so the strongest claim is that profit-aware route ranking matters more than that a complex model is strictly necessary in saturated demand.
 
 **Winner/loser histogram** (`results/plots/winner_loser.png`): Distribution of per-driver profit differences (warm-up minus cold-start), showing what fraction of drivers benefit from ML route selection.
 

@@ -1,0 +1,87 @@
+% =============================================================================
+% Include in main.tex: \input{figures_architecture_matching}
+% Requires: \usepackage{tikz}
+%           \usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit}
+% =============================================================================
+
+% -----------------------------------------------------------------------------
+% Figure 1: System Architecture
+% -----------------------------------------------------------------------------
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=0.6cm and 1.2cm,
+  box/.style={rectangle, draw, rounded corners=2pt, minimum height=0.6cm, minimum width=2.2cm, font=\small},
+  bigbox/.style={rectangle, draw, rounded corners=3pt, minimum width=3.5cm},
+  arrow/.style={-Stealth, thick}
+]
+  % Top: OSRM
+  \node[bigbox, fill=blue!8] (osrm) {OSRM MLD Server (Docker)\\New York road network\\2--3 alternatives per OD};
+  \node[below=of osrm, box, fill=gray!12] (cache) {SQLite Route Cache};
+  \draw[arrow] (osrm) -- (cache);
+
+  % Three components
+  \node[below left=1.2cm and 0.2cm of cache, box, fill=green!12] (corr) {Corridor Builder\\(H3 r9, k-ring 1)};
+  \node[below=1.2cm of cache, box, fill=orange!12] (match) {Shapely Matcher\\(direction, detour, seats)};
+  \node[below right=1.2cm and 0.2cm of cache, box, fill=red!8] (lgb) {LightGBM Predictor\\(R²=0.79)};
+  \draw[arrow] (cache) -| (corr);
+  \draw[arrow] (cache) -- (match);
+  \draw[arrow] (cache) -| (lgb);
+
+  % Strategies
+  \node[below left=1.0cm and 0.1cm of corr, box, fill=blue!15] (cs) {Cold-Start\\(1 route)};
+  \node[below right=1.0cm and 0.1cm of lgb, box, fill=orange!18] (wu) {Warm-Up\\(3 routes + ML)};
+  \draw[arrow] (corr) -- (cs);
+  \draw[arrow] (match) -- (cs);
+  \draw[arrow] (corr) -- (wu);
+  \draw[arrow] (lgb) -- (wu);
+  \draw[arrow] (match) -- (wu);
+
+  % Runner
+  \node[below=1.4cm of match, bigbox, fill=purple!8] (runner) {Runner: paired, driver-major, 5 seeds};
+  \draw[arrow] (cs) -- (runner);
+  \draw[arrow] (wu) -- (runner);
+
+  % Bottom
+  \node[below=0.6cm of runner, box, fill=gray!15] (stats) {Statistical tests + Visualizations};
+  \draw[arrow] (runner) -- (stats);
+\end{tikzpicture}
+\caption{System architecture. OSRM MLD supplies 2--3 alternative routes per OD; the SQLite cache serves them to the corridor builder, matcher, and LightGBM predictor. Cold-start uses the default route (first); warm-up ranks all three by predicted profit and matches on the selected route. The runner executes both strategies per driver over 5 seeds, then aggregates and runs tests.}
+\label{fig:architecture}
+\end{figure}
+
+% -----------------------------------------------------------------------------
+% Figure 2: Corridor construction (schematic)
+% -----------------------------------------------------------------------------
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=0.8cm, box/.style={rectangle, draw, minimum width=2cm}, arrow/.style={-Stealth}]
+  \node[box, fill=blue!10] (p) {Polyline};
+  \node[box, right=of p, fill=green!10] (d) {Densify 80\,m};
+  \node[box, right=of d, fill=orange!10] (h) {H3 cells (res 9)};
+  \node[box, right=of h, fill=red!10] (k) {k-ring (k=1)};
+  \node[box, right=of k, fill=purple!10] (c) {Corridor};
+  \draw[arrow] (p) -- (d) -- (h) -- (k) -- (c);
+\end{tikzpicture}
+\caption{Corridor construction pipeline. The route polyline is densified every 80\,m, each point is mapped to an H3 resolution-9 cell, and a one-step k-ring expansion produces a band of width $\sim$520\,m around the route.}
+\label{fig:corridor-pipeline}
+\end{figure}
+
+% -----------------------------------------------------------------------------
+% Figure 3: Matching pipeline (three stages)
+% -----------------------------------------------------------------------------
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=0.7cm,
+  stage/.style={rectangle, draw, rounded corners=2pt, minimum width=3.2cm, minimum height=0.9cm, font=\small, align=center},
+  arrow/.style={-Stealth, thick}
+]
+  \node[stage, fill=blue!12] (s1) {\textbf{Stage 1: RiderIndex}\\Corridor + 15-min bin $\pm$1\\$\Rightarrow$ 10--50 candidates};
+  \node[stage, below=of s1, fill=green!12] (s2) {\textbf{Stage 2: Shapely}\\Direction $\ge$5\%, detour $\le$4\,min, seats\\$\Rightarrow$ 2--5 feasible};
+  \node[stage, below=of s2, fill=orange!12] (s3) {\textbf{Stage 3: Greedy}\\Sort by fare, tie-break (seed)\\$\Rightarrow$ 0--3 matched, profit};
+  \draw[arrow] (s1) -- (s2) -- (s3);
+\end{tikzpicture}
+\caption{Matching pipeline. Stage 1: spatial--temporal filter via RiderIndex (corridor cells and 15-minute time window). Stage 2: feasibility filter (directionality, detour, seat capacity) using Shapely. Stage 3: greedy assignment by fare with seed-based tie-breaking; output is matched riders and profit.}
+\label{fig:matching-pipeline}
+\end{figure}
