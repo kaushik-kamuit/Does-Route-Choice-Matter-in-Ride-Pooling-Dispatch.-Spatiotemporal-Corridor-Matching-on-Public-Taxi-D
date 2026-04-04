@@ -166,6 +166,10 @@ The current main paper figure set is:
 
 Upload the contents of `paper/` directly to Overleaf to compile the standalone package.
 
+## License
+
+This repository is released under the [MIT License](LICENSE). Third-party data sources, map tiles, OSRM services, and other external resources remain subject to their original terms.
+
 ## Legacy note
 
 The repository still contains historical notes and archived outputs from the earlier optimistic artifact. The current publication-facing story, however, is the dispatch-first 5-minute exact-window configuration described above. Use the files in `results/`, `paper/`, and `artifacts/legacy_optimistic_45min/` accordingly.
