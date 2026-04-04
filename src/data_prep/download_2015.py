@@ -1,9 +1,8 @@
 """
-Download NYC TLC Yellow Taxi 2015 data from Azure Open Datasets.
+Download NYC TLC Yellow or Green Taxi 2015 data from Azure Open Datasets.
 
 Uses the public Azure blob storage (no auth required).
-Downloads 4 months: Jan-Mar (training), Apr (testing).
-Applies quality filters and column pruning to manage size.
+Supports domain-aware output paths so Yellow and Green artifacts stay isolated.
 """
 
 import sys
@@ -12,56 +11,54 @@ from pathlib import Path
 
 import pandas as pd
 
-YEAR = 2015
-MONTHS = [1, 2, 3, 4]
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+from data_prep.domain_config import DEFAULT_MONTH_WINDOW, YEAR, get_domain_config
+
 
 AZURE_STORAGE_OPTIONS = {
     "account_name": "azureopendatastorage",
     "anon": True,
 }
-BASE_PATH = "az://nyctlc/yellow"
-
-COLUMNS = [
-    "tpepPickupDateTime",
-    "tpepDropoffDateTime",
-    "startLat",
-    "startLon",
-    "endLat",
-    "endLon",
-    "tripDistance",
-    "fareAmount",
-    "tipAmount",
-    "totalAmount",
-    "passengerCount",
-]
 
 NYC_LAT_MIN, NYC_LAT_MAX = 40.49, 40.92
 NYC_LON_MIN, NYC_LON_MAX = -74.26, -73.68
 
-OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
+
+def _source_column(config, canonical_name: str) -> str:
+    for raw_name, renamed in config.column_renames.items():
+        if renamed == canonical_name:
+            return raw_name
+    raise KeyError(f"Domain {config.name!r} does not define a source column for {canonical_name!r}")
 
 
-def quality_filter(df: pd.DataFrame) -> pd.DataFrame:
+def quality_filter(df: pd.DataFrame, config) -> pd.DataFrame:
     """Remove invalid/unusable rows. Keep all trip lengths for flexible driver/rider split."""
+    pickup_lat_col = _source_column(config, "pickup_lat")
+    pickup_lng_col = _source_column(config, "pickup_lng")
+    dropoff_lat_col = _source_column(config, "dropoff_lat")
+    dropoff_lng_col = _source_column(config, "dropoff_lng")
+    passenger_count_col = _source_column(config, "passenger_count")
     mask = (
-        df["startLat"].between(NYC_LAT_MIN, NYC_LAT_MAX)
-        & df["startLon"].between(NYC_LON_MIN, NYC_LON_MAX)
-        & df["endLat"].between(NYC_LAT_MIN, NYC_LAT_MAX)
-        & df["endLon"].between(NYC_LON_MIN, NYC_LON_MAX)
+        df[pickup_lat_col].between(NYC_LAT_MIN, NYC_LAT_MAX)
+        & df[pickup_lng_col].between(NYC_LON_MIN, NYC_LON_MAX)
+        & df[dropoff_lat_col].between(NYC_LAT_MIN, NYC_LAT_MAX)
+        & df[dropoff_lng_col].between(NYC_LON_MIN, NYC_LON_MAX)
         & (df["tripDistance"] > 0.3)
         & df["fareAmount"].between(2.50, 300)
-        & (df["passengerCount"] > 0)
+        & (df[passenger_count_col] > 0)
     )
     return df.loc[mask].copy()
 
 
-def download_month(year: int, month: int) -> pd.DataFrame:
+def download_month(base_path: str, columns: tuple[str, ...], year: int, month: int) -> pd.DataFrame:
     """Download one month of data from Azure, selecting only needed columns."""
-    path = f"{BASE_PATH}/puYear={year}/puMonth={month}/"
+    path = f"{base_path}/puYear={year}/puMonth={month}/"
     print(f"  Reading from Azure: {path}")
     df = pd.read_parquet(
         path,
-        columns=COLUMNS,
+        columns=list(columns),
         storage_options=AZURE_STORAGE_OPTIONS,
     )
     return df
@@ -78,25 +75,42 @@ def print_stats(df: pd.DataFrame, label: str) -> None:
 
 
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Download NYC TLC 2015 taxi data from Azure Open Datasets")
+    parser.add_argument("--domain", type=str, default="yellow", choices=["yellow", "green"])
+    parser.add_argument(
+        "--months",
+        type=int,
+        nargs="+",
+        default=list(DEFAULT_MONTH_WINDOW),
+        help="Months to download (default: Jan-Apr)",
+    )
+    args = parser.parse_args()
+
+    config = get_domain_config(args.domain)
+    output_dir = config.raw_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
     total_rows = 0
     total_bytes = 0
 
-    for month in MONTHS:
+    print(f"Domain: {config.display_name} ({config.name})")
+
+    for month in args.months:
         print(f"\n{'='*60}")
-        print(f"Processing {YEAR}-{month:02d}")
+        print(f"Processing {config.name} {YEAR}-{month:02d}")
         print(f"{'='*60}")
 
         t0 = time.time()
-        df = download_month(YEAR, month)
+        df = download_month(config.azure_base_path, config.raw_columns, YEAR, month)
         dl_time = time.time() - t0
         print(f"  Downloaded {len(df):,} rows in {dl_time:.1f}s")
         print_stats(df, "raw")
 
-        df = quality_filter(df)
+        df = quality_filter(df, config)
         print_stats(df, "filtered")
 
-        out_path = OUTPUT_DIR / f"yellow_tripdata_{YEAR}-{month:02d}.parquet"
+        out_path = output_dir / f"{config.raw_filename_prefix}_{YEAR}-{month:02d}.parquet"
         df.to_parquet(out_path, compression="snappy", index=False)
 
         file_mb = out_path.stat().st_size / (1024 * 1024)
@@ -108,7 +122,7 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"DONE: {total_rows:,} total rows, {total_bytes / (1024**2):.1f} MB on disk")
-    print(f"Files in: {OUTPUT_DIR}")
+    print(f"Files in: {output_dir}")
     print(f"{'='*60}")
 
 

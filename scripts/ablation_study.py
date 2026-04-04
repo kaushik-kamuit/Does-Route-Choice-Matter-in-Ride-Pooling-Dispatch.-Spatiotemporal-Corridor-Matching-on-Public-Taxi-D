@@ -34,16 +34,21 @@ import pandas as pd
 import lightgbm as lgb
 from tqdm import tqdm
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from sklearn.model_selection import GroupShuffleSplit
 
-DATASET_PATH = ROOT / "data" / "ml" / "training_dataset_v2.parquet"
-RESULTS_DIR = ROOT / "results"
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+from data_prep.domain_config import get_domain_config
+from models.evaluation_split import build_eval_split
 
-SPLIT_SEED = 42
-VAL_FRAC = 0.20
 TARGET = "expected_profit"
-EXCLUDE_COLS = {"driver_id", "route_idx", "expected_revenue", "driver_cost", "expected_profit"}
+EXCLUDE_COLS = {
+    "driver_id",
+    "route_idx",
+    "service_month",
+    "service_date",
+    "service_window_pos",
+    "expected_revenue",
+    "driver_cost",
+    "expected_profit",
+}
 
 GEOMETRIC = [
     "route_distance_m", "route_duration_s", "corridor_cell_count",
@@ -117,10 +122,22 @@ def train_and_evaluate(X_tr, y_tr, X_va, y_va, feat_names, df, val_idx):
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run LightGBM feature ablation on the domain-specific training dataset")
+    parser.add_argument("--domain", type=str, default="yellow", choices=["yellow", "green"])
+    parser.add_argument("--dataset", type=str, default="", help="Optional explicit dataset path")
+    args = parser.parse_args()
+
+    domain_config = get_domain_config(args.domain)
+    dataset_path = Path(args.dataset) if args.dataset else domain_config.training_dataset_path()
+    results_dir = ROOT / "results" if args.domain == "yellow" else domain_config.results_dir
+    results_dir.mkdir(parents=True, exist_ok=True)
+
     print("=== Feature Ablation Study ===\n")
 
     print("  Loading dataset...", end=" ")
-    df = pd.read_parquet(DATASET_PATH)
+    df = pd.read_parquet(dataset_path)
     all_feat_cols = [c for c in df.columns if c not in EXCLUDE_COLS]
     print(f"{len(df):,} rows, {len(all_feat_cols)} features")
 
@@ -128,9 +145,10 @@ def main():
     y = df[TARGET].values.astype(np.float32)
     groups = df["driver_id"].values
 
-    gss = GroupShuffleSplit(n_splits=1, test_size=VAL_FRAC, random_state=SPLIT_SEED)
-    train_idx, val_idx = next(gss.split(X_all, y, groups=groups))
-    print(f"  Train: {len(train_idx):,}  Val: {len(val_idx):,}\n")
+    split = build_eval_split(df)
+    train_idx, val_idx = split.train_idx, split.val_idx
+    print(f"  Train: {len(train_idx):,}  Val: {len(val_idx):,}")
+    print(f"  Split: {split.train_label} -> {split.val_label}\n")
 
     experiments = [("All features", all_feat_cols)]
 
@@ -178,7 +196,7 @@ def main():
         print(f"{r['experiment']:30s} {r['n_features']:6d} "
               f"{r['r2']:8.4f} ${r['rmse']:7.2f} {r['rank_acc']:7.1%}")
 
-    out_path = RESULTS_DIR / "ablation_results.csv"
+    out_path = results_dir / "ablation_results.csv"
     pd.DataFrame(results).to_csv(out_path, index=False)
     print(f"\n  Results saved to: {out_path}")
 

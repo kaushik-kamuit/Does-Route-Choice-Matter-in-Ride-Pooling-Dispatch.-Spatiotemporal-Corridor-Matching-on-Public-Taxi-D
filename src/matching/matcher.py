@@ -17,6 +17,7 @@ vectorized C with no Python-level loops over polyline points.
 
 from __future__ import annotations
 
+from datetime import datetime
 from math import cos, radians
 from typing import Sequence
 
@@ -52,8 +53,13 @@ def match_riders(
     polyline: Sequence[LatLng],
     rider_index: RiderIndex,
     minute_of_day: int,
+    query_datetime: datetime | pd.Timestamp | None = None,
     seats: int = 3,
     max_detour_min: float = 4.0,
+    candidate_window_bins: int = 1,
+    max_request_offset_min: int | None = None,
+    platform_share: float = PLATFORM_SHARE,
+    urban_speed_kmh: float = 40.0,
     seed: int = 0,
     candidates: pd.DataFrame | None = None,
 ) -> tuple[list[dict], list[dict]]:
@@ -70,7 +76,13 @@ def match_riders(
     feasible: all riders passing filters (before seat cap)
     """
     if candidates is None:
-        candidates = rider_index.find_in_corridor(corridor.corridor_cells, minute_of_day)
+        candidates = rider_index.find_in_corridor(
+            corridor.corridor_cells,
+            minute_of_day,
+            window_bins=candidate_window_bins,
+            max_request_offset_min=max_request_offset_min,
+            query_datetime=query_datetime,
+        )
     if candidates.empty:
         return [], []
 
@@ -94,7 +106,8 @@ def match_riders(
 
     travel_frac = do_fracs - pu_fracs
     detour_m = 2 * (pu_dists_m + do_dists_m) * MANHATTAN_FACTOR
-    detour_min = detour_m / URBAN_SPEED_MPS / 60.0
+    urban_speed_mps = urban_speed_kmh * 1000.0 / 3600.0
+    detour_min = detour_m / urban_speed_mps / 60.0
 
     pax = candidates["passenger_count"].values.astype(int)
     fares = candidates["fare_amount"].values
@@ -113,7 +126,7 @@ def match_riders(
     n_pass = len(indices)
     rng = np.random.default_rng(seed)
     noise = rng.uniform(-0.01, 0.01, size=n_pass) if n_pass > 0 else np.empty(0)
-    fare_shares = fares_pass * PLATFORM_SHARE
+    fare_shares = fares_pass * platform_share
 
     feasible: list[dict] = []
     for j in range(n_pass):

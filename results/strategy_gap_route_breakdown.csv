@@ -1,0 +1,5 @@
+density_pct,comparison,route_length_category,mean_diff
+10,warmup_vs_heuristic,short,0.08
+10,warmup_vs_heuristic,medium,0.11
+10,warmup_vs_heuristic,long,0.14
+25,warmup_vs_heuristic,long,0.12

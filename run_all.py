@@ -1,98 +1,49 @@
 """
-Single entry point to run the full warm-up vs cold-start experiment pipeline.
+Single entry point for the Q2-targeted artifact suite.
 
-Phases:
-  2. Build ML training dataset + train profit predictor
-  3. Run paired cold-start / warm-up simulation
-  4. Generate comparison plots and statistical summary
-
-Usage:
-    python run_all.py                 # full pipeline
-    python run_all.py --no-api        # skip OSRM, use straight-line corridors
-    python run_all.py --sample 5000   # fewer test drivers for speed
+By default this runs:
+  1. the realism-first single-driver artifact
+  2. the rolling-horizon dispatch artifact
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
 
-def _run(cmd: list[str], label: str) -> None:
-    print(f"\n{'='*60}")
-    print(f"  {label}")
-    print(f"{'='*60}\n")
-    t0 = time.time()
-    result = subprocess.run(cmd, cwd=str(ROOT))
-    elapsed = time.time() - t0
-    if result.returncode != 0:
-        print(f"\n  FAILED ({label}) exit code {result.returncode}")
-        sys.exit(result.returncode)
-    print(f"\n  Completed {label} in {elapsed:.0f}s ({elapsed/60:.1f} min)")
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run full experiment pipeline")
-    parser.add_argument("--no-api", action="store_true",
-                        help="Use straight-line corridors instead of OSRM routes")
-    parser.add_argument("--sample", type=int, default=None,
-                        help="Override sample size for simulation runner")
-    parser.add_argument("--ds-sample", type=int, default=None,
-                        help="Override sample size for build_dataset")
-    parser.add_argument("--seeds", type=int, default=5,
-                        help="Number of experiment seeds (default 5)")
-    parser.add_argument("--skip-dataset", action="store_true",
-                        help="Skip dataset building (reuse existing)")
-    parser.add_argument("--skip-train", action="store_true",
-                        help="Skip model training (reuse existing)")
-    parser.add_argument("--skip-sim", action="store_true",
-                        help="Skip simulation (reuse existing results)")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Run the single-driver and dispatch artifact suites")
+    parser.add_argument("--single-driver-only", action="store_true", help="Run only the realism-first single-driver artifact")
+    parser.add_argument("--dispatch-only", action="store_true", help="Run only the rolling dispatch artifact")
+    args, passthrough = parser.parse_known_args()
+    dispatch_only_flags = {"--primary-only", "--skip-green", "--fetch"}
+    realism_args: list[str] = []
+    dispatch_args: list[str] = []
+    i = 0
+    while i < len(passthrough):
+        token = passthrough[i]
+        target = dispatch_args if token in dispatch_only_flags else realism_args
+        target.append(token)
+        if i + 1 < len(passthrough) and not passthrough[i + 1].startswith("--"):
+            target.append(passthrough[i + 1])
+            i += 1
+        i += 1
 
-    if args.no_api:
-        os.environ["CARPOOL_NO_API"] = "1"
+    commands: list[list[str]] = []
+    if not args.dispatch_only:
+        commands.append([sys.executable, str(ROOT / "scripts" / "run_realism_artifact.py"), *realism_args])
+    if not args.single_driver_only:
+        commands.append([sys.executable, str(ROOT / "scripts" / "run_dispatch_artifact.py"), *dispatch_args, *realism_args])
 
-    t_total = time.time()
-
-    # --- Phase 2A: Build dataset ---
-    if not args.skip_dataset:
-        ds_cmd = [sys.executable, "src/models/build_dataset.py"]
-        if args.ds_sample:
-            ds_cmd += ["--sample", str(args.ds_sample)]
-        _run(ds_cmd, "Phase 2A: Build Training Dataset")
-
-    # --- Phase 2B: Train model ---
-    if not args.skip_train:
-        _run([sys.executable, "src/models/train_profit_model.py"],
-             "Phase 2B: Train Profit Model")
-
-    # --- Phase 3: Simulation ---
-    if not args.skip_sim:
-        sim_cmd = [sys.executable, "src/simulation/runner.py"]
-        if args.sample:
-            sim_cmd += ["--sample", str(args.sample)]
-        sim_cmd += ["--seeds", str(args.seeds)]
-        _run(sim_cmd, "Phase 3: Run Simulation")
-
-    # --- Phase 4: Visualization ---
-    _run([sys.executable, "visualizations/plot_comparison.py"],
-         "Phase 4A: Comparison Plots")
-
-    _run([sys.executable, "visualizations/plot_model.py"],
-         "Phase 4B: Model Insight Plots")
-
-    elapsed = time.time() - t_total
-    print(f"\n{'='*60}")
-    print(f"  ALL PHASES COMPLETE")
-    print(f"  Total time: {elapsed:.0f}s ({elapsed/60:.1f} min)")
-    print(f"  Results: {ROOT / 'results'}")
-    print(f"{'='*60}")
+    for cmd in commands:
+        result = subprocess.run(cmd, cwd=str(ROOT))
+        if result.returncode != 0:
+            raise SystemExit(result.returncode)
 
 
 if __name__ == "__main__":

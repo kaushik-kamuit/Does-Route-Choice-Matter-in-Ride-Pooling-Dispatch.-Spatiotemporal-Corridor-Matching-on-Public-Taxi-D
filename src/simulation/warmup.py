@@ -16,7 +16,7 @@ import time
 import h3
 import numpy as np
 
-from matching.matcher import match_riders, COST_PER_MILE, METERS_PER_MILE
+from matching.matcher import match_riders, METERS_PER_MILE
 from matching.rider_index import RiderIndex
 from models.predict import ProfitPredictor
 from spatial.corridor import Corridor, build_corridor
@@ -90,9 +90,20 @@ def _route_features(
     h3_stats_dict: dict,
     seats: int = 3,
     max_detour_min: float = 4.0,
+    candidate_window_bins: int = 1,
+    max_request_offset_min: int | None = None,
+    query_datetime=None,
+    candidates=None,
 ) -> dict[str, float]:
     """Build the feature dict the v2 profit model expects."""
-    candidates = rider_index.find_in_corridor(corridor.corridor_cells, minute_of_day)
+    if candidates is None:
+        candidates = rider_index.find_in_corridor(
+            corridor.corridor_cells,
+            minute_of_day,
+            window_bins=candidate_window_bins,
+            max_request_offset_min=max_request_offset_min,
+            query_datetime=query_datetime,
+        )
     n_riders = len(candidates)
     n_cells = corridor.n_corridor_cells
     fares = candidates["fare_amount"].values if n_riders > 0 else np.array([])
@@ -162,6 +173,8 @@ def run_warmup(
     day_of_month: int = 1,
     h3_stats_dict: dict | None = None,
     seed: int = 0,
+    candidate_window_bins: int = 1,
+    max_request_offset_min: int | None = None,
     *,
     routes: list[RouteInfo] | None = None,
     corridors: list[Corridor] | None = None,
@@ -198,6 +211,9 @@ def run_warmup(
                 driver.hour, day_of_week, is_weekend, day_of_month,
                 driver.origin, driver.destination, h3_stats_dict,
                 seats=driver.seats, max_detour_min=driver.max_detour_minutes,
+                candidate_window_bins=candidate_window_bins,
+                max_request_offset_min=max_request_offset_min,
+                query_datetime=driver.departure_time,
             )
             for r, c in zip(routes, corridors)
         ]
@@ -216,14 +232,19 @@ def run_warmup(
         best_route.polyline,
         rider_index,
         minute_of_day=driver.minute_of_day,
+        query_datetime=driver.departure_time,
         seats=driver.seats,
         max_detour_min=driver.max_detour_minutes,
+        candidate_window_bins=candidate_window_bins,
+        max_request_offset_min=max_request_offset_min,
+        platform_share=driver.platform_share,
+        urban_speed_kmh=driver.urban_speed_kmh,
         seed=seed,
     )
 
     total_revenue = sum(m["fare_share"] for m in matched)
     distance_miles = best_route.distance_m / METERS_PER_MILE
-    driving_cost = distance_miles * COST_PER_MILE
+    driving_cost = distance_miles * driver.cost_per_mile
     profit = total_revenue - driving_cost
 
     elapsed = time.perf_counter() - t0

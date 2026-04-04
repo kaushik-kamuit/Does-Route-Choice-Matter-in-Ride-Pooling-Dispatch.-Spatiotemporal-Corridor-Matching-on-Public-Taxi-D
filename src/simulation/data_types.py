@@ -31,6 +31,9 @@ class DriverTrip:
     trip_distance_miles: float = 0.0
     seats: int = 3
     max_detour_minutes: float = 4.0
+    platform_share: float = 0.50
+    cost_per_mile: float = 0.67
+    urban_speed_kmh: float = 40.0
 
     @property
     def route_length_category(self) -> str:

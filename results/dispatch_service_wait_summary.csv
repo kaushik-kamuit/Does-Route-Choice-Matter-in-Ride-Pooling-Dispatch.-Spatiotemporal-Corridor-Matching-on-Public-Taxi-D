@@ -1,0 +1,9 @@
+domain,policy,mean_wait_min,rider_service_rate,matched_riders_per_driver
+yellow,coldstart,2.51,0.041,0.16
+yellow,heuristic_feasible_count,2.52,0.074,0.29
+yellow,oracle,2.54,0.074,0.29
+yellow,warmup,2.56,0.07,0.27
+green,coldstart,1.87,0.006,0.02
+green,heuristic_feasible_count,2.14,0.011,0.04
+green,oracle,2.05,0.074,0.29
+green,warmup,2.07,0.069,0.27

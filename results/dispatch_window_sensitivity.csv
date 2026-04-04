@@ -1,0 +1,13 @@
+policy,matching_window_min,density_pct,max_detour_min,total_profit,profit_per_launched_driver,selected_heuristic_policy
+coldstart,2,10,4,-8648.787,-8.648787,heuristic_feasible_count
+heuristic_feasible_count,2,10,4,-8303.963,-8.303963,heuristic_feasible_count
+warmup,2,10,4,-8074.291,-8.074291,heuristic_feasible_count
+oracle,2,10,4,-7999.768,-7.999768,heuristic_feasible_count
+coldstart,5,10,4,-8076.036999999999,-8.076037,heuristic_feasible_count
+heuristic_feasible_count,5,10,4,-7304.126,-7.304126,heuristic_feasible_count
+warmup,5,10,4,-7148.013,-7.148013,heuristic_feasible_count
+oracle,5,10,4,-7023.227000000001,-7.023227,heuristic_feasible_count
+coldstart,10,10,4,-7257.787,-7.257787,heuristic_feasible_count
+heuristic_feasible_count,10,10,4,-6085.923,-6.085923,heuristic_feasible_count
+warmup,10,10,4,-5951.723,-5.951723,heuristic_feasible_count
+oracle,10,10,4,-5736.057,-5.736057,heuristic_feasible_count

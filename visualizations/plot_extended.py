@@ -29,6 +29,7 @@ from scipy import stats
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = ROOT / "results"
 PLOTS_DIR = RESULTS_DIR / "plots"
+REALISM_PRIMARY_PATH = RESULTS_DIR / "realism_primary_summary.csv"
 
 STRATEGIES = ["coldstart", "random", "heuristic", "warmup", "oracle"]
 STRATEGY_LABELS = {
@@ -281,31 +282,51 @@ def plot_density_advantage() -> None:
         suffix = f"_d{d}" if d < 100 else ""
         cs = _load_strategy("coldstart", suffix)
         wu = _load_strategy("warmup", suffix)
+        heu = _load_strategy("heuristic", suffix)
+        ora = _load_strategy("oracle", suffix)
         if cs is None or wu is None:
             continue
+
         cs_agg = cs.groupby("driver_id")["profit"].mean()
         wu_agg = wu.groupby("driver_id")["profit"].mean()
         merged = pd.DataFrame({"cs": cs_agg, "wu": wu_agg}).dropna()
         delta = merged["wu"] - merged["cs"]
         match_rate_cs = (cs["matched_riders"] > 0).mean() * 100
         match_rate_wu = (wu["matched_riders"] > 0).mean() * 100
-        records.append({
+
+        row = {
             "density_pct": d,
             "delta_mean": delta.mean(),
             "delta_sem": delta.sem(),
-            "delta_pct": delta.mean() / merged["cs"].mean() * 100 if merged["cs"].mean() != 0 else 0,
+            "delta_pct": (
+                delta.mean() / (abs(merged["cs"].mean()) if merged["cs"].mean() < 0 else merged["cs"].mean()) * 100
+                if merged["cs"].mean() != 0 else 0
+            ),
             "cs_mean": merged["cs"].mean(),
             "wu_mean": merged["wu"].mean(),
             "match_rate_cs": match_rate_cs,
             "match_rate_wu": match_rate_wu,
             "n_drivers": len(merged),
-        })
+            "matching_window_min": 5,
+            "index_bin_minutes": 15,
+            "candidate_window_bins": 1,
+            "max_detour_min": 4.0,
+            "rider_pool_semantics": "retained_25pct_sample",
+        }
+        if heu is not None:
+            row["heuristic_profit"] = heu.groupby("driver_id")["profit"].mean().mean()
+            row["warmup_vs_heuristic"] = row["wu_mean"] - row["heuristic_profit"]
+        if ora is not None:
+            row["oracle_profit"] = ora.groupby("driver_id")["profit"].mean().mean()
+        records.append(row)
 
     if len(records) < 2:
         print("  [5] Density plot: skipped (need >= 2 density levels)")
         return
 
     df = pd.DataFrame(records).sort_values("density_pct")
+    if "delta_sem" not in df.columns:
+        df["delta_sem"] = 0.0
     df.to_csv(RESULTS_DIR / "density_results.csv", index=False)
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -314,22 +335,40 @@ def plot_density_advantage() -> None:
     ax.errorbar(df["density_pct"], df["delta_mean"],
                 yerr=df["delta_sem"] * 1.96,
                 fmt="o-", color="#DD8452", capsize=5, linewidth=2, markersize=8)
-    ax.set_xlabel("Rider Density (%)")
+    ax.set_xlabel("Retained-Sample Density (%)")
     ax.set_ylabel("Warm-Up Advantage ($)")
     ax.set_title("Warm-Up Advantage vs Rider Density")
     ax.axhline(0, color="gray", linewidth=0.5, linestyle="--")
     ax.invert_xaxis()
+    ax.text(
+        0.03, 0.96,
+        "5-minute exact request window\n25% rider pre-sample retained before density subsampling",
+        transform=ax.transAxes,
+        ha="left", va="top", fontsize=8.5,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.85),
+    )
 
     ax = axes[1]
-    ax.plot(df["density_pct"], df["match_rate_cs"], "o-", color="#4C72B0",
-            label="Cold-Start", linewidth=2, markersize=8)
-    ax.plot(df["density_pct"], df["match_rate_wu"], "s-", color="#DD8452",
-            label="Warm-Up", linewidth=2, markersize=8)
-    ax.set_xlabel("Rider Density (%)")
-    ax.set_ylabel("Match Rate (%)")
-    ax.set_title("Match Rate vs Rider Density")
-    ax.legend()
-    ax.invert_xaxis()
+    if "match_rate_cs" in df.columns and "match_rate_wu" in df.columns:
+        ax.plot(df["density_pct"], df["match_rate_cs"], "o-", color="#4C72B0",
+                label="Cold-Start", linewidth=2, markersize=8)
+        ax.plot(df["density_pct"], df["match_rate_wu"], "s-", color="#DD8452",
+                label="Warm-Up", linewidth=2, markersize=8)
+        ax.set_xlabel("Retained-Sample Density (%)")
+        ax.set_ylabel("Match Rate (%)")
+        ax.set_title("Match Rate vs Rider Density")
+        ax.legend()
+        ax.invert_xaxis()
+    else:
+        ax.plot(df["density_pct"], df["cs_mean"], "o-", color="#4C72B0",
+                label="Cold-Start", linewidth=2, markersize=8)
+        ax.plot(df["density_pct"], df["wu_mean"], "s-", color="#DD8452",
+                label="Warm-Up", linewidth=2, markersize=8)
+        ax.set_xlabel("Retained-Sample Density (%)")
+        ax.set_ylabel("Mean Profit ($)")
+        ax.set_title("Absolute Profit vs Rider Density")
+        ax.legend()
+        ax.invert_xaxis()
 
     fig.tight_layout()
     fig.savefig(PLOTS_DIR / "density_advantage.png", bbox_inches="tight")

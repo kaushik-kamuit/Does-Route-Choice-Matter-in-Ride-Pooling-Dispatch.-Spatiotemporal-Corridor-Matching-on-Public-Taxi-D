@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from matching.matcher import match_riders, COST_PER_MILE, METERS_PER_MILE
+from matching.matcher import match_riders, METERS_PER_MILE
 from matching.rider_index import RiderIndex
 from spatial.corridor import Corridor, build_corridor
 from spatial.router import OSRMRouter, RouteInfo
@@ -23,6 +23,8 @@ def run_coldstart(
     router: OSRMRouter,
     rider_index: RiderIndex,
     seed: int = 0,
+    candidate_window_bins: int = 1,
+    max_request_offset_min: int | None = None,
     *,
     route: RouteInfo | None = None,
     corridor: Corridor | None = None,
@@ -50,14 +52,19 @@ def run_coldstart(
         route.polyline,
         rider_index,
         minute_of_day=driver.minute_of_day,
+        query_datetime=driver.departure_time,
         seats=driver.seats,
         max_detour_min=driver.max_detour_minutes,
+        candidate_window_bins=candidate_window_bins,
+        max_request_offset_min=max_request_offset_min,
+        platform_share=driver.platform_share,
+        urban_speed_kmh=driver.urban_speed_kmh,
         seed=seed,
     )
 
     total_revenue = sum(m["fare_share"] for m in matched)
     distance_miles = route.distance_m / METERS_PER_MILE
-    driving_cost = distance_miles * COST_PER_MILE
+    driving_cost = distance_miles * driver.cost_per_mile
     profit = total_revenue - driving_cost
 
     elapsed = time.perf_counter() - t0

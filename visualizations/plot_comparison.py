@@ -135,8 +135,14 @@ def plot_profit_box(cs: pd.DataFrame, wu: pd.DataFrame) -> None:
     for ax, cat in zip(axes, CATEGORY_ORDER):
         sub = df[df["route_length_category"] == cat]
         sns.boxplot(
-            data=sub, x="strategy_label", y="profit",
-            palette=PALETTE.values(), ax=ax, showfliers=False,
+            data=sub,
+            x="strategy_label",
+            y="profit",
+            hue="strategy_label",
+            palette={STRATEGY_LABELS[s]: PALETTE[s] for s in STRATEGY_ORDER},
+            ax=ax,
+            showfliers=False,
+            legend=False,
         )
         ax.set_title(f"{cat.capitalize()} Routes")
         ax.set_xlabel("")
