@@ -55,21 +55,21 @@ ASSETS: dict[str, UrbanContextAsset] = {
     ),
     'sidewalk_centerline': UrbanContextAsset(
         key='sidewalk_centerline',
-        dataset_id='a9xv-vek9',
+        dataset_id='fytp-pq92',
         title='Sidewalk Centerline',
-        download_url='https://data.cityofnewyork.us/api/geospatial/a9xv-vek9?method=export&format=GeoJSON',
-        storage_name='sidewalk_centerline.geojson',
+        download_url='https://data.cityofnewyork.us/resource/fytp-pq92.csv?$select=the_geom',
+        storage_name='sidewalk_centerline.csv',
         docs_url='https://data.cityofnewyork.us/d/a9xv-vek9',
-        format='geojson',
+        format='csv',
     ),
     'building_footprints': UrbanContextAsset(
         key='building_footprints',
-        dataset_id='jh45-qr5r',
+        dataset_id='5zhs-2jue',
         title='Building Footprints (Map)',
-        download_url='https://data.cityofnewyork.us/api/geospatial/jh45-qr5r?method=export&format=GeoJSON',
-        storage_name='building_footprints.geojson',
+        download_url='https://data.cityofnewyork.us/resource/5zhs-2jue.csv?$select=the_geom,shape_area,height_roof',
+        storage_name='building_footprints.csv',
         docs_url='https://data.cityofnewyork.us/d/jh45-qr5r',
-        format='geojson',
+        format='csv',
     ),
     'pluto': UrbanContextAsset(
         key='pluto',
@@ -82,12 +82,12 @@ ASSETS: dict[str, UrbanContextAsset] = {
     ),
     'elevation_points': UrbanContextAsset(
         key='elevation_points',
-        dataset_id='szwg-xci6',
+        dataset_id='9uxf-ng6q',
         title='NYC Planimetric Database: Elevation Points',
-        download_url='https://data.cityofnewyork.us/api/geospatial/szwg-xci6?method=export&format=GeoJSON',
-        storage_name='elevation_points.geojson',
+        download_url='https://data.cityofnewyork.us/resource/9uxf-ng6q.csv?$select=the_geom,elevation',
+        storage_name='elevation_points.csv',
         docs_url='https://data.cityofnewyork.us/d/szwg-xci6',
-        format='geojson',
+        format='csv',
     ),
 }
 
@@ -174,13 +174,21 @@ def build_context_features(
     if 'street_centerline' in selected_keys:
         frames.append(_aggregate_street_centerline(get_asset('street_centerline').raw_path(), resolution, densify_step_m, max_rows_per_asset))
     if 'sidewalk_centerline' in selected_keys:
-        frames.append(_aggregate_geojson_lines(get_asset('sidewalk_centerline').raw_path(), resolution, densify_step_m, max_rows_per_asset, prefix='sidewalk'))
+        frames.append(
+            _aggregate_csv_lines(
+                get_asset('sidewalk_centerline').raw_path(),
+                resolution,
+                densify_step_m,
+                max_rows_per_asset,
+                prefix='sidewalk',
+            )
+        )
     if 'building_footprints' in selected_keys:
-        frames.append(_aggregate_geojson_polygons(get_asset('building_footprints').raw_path(), resolution, max_rows_per_asset, prefix='building'))
+        frames.append(_aggregate_csv_polygons(get_asset('building_footprints').raw_path(), resolution, max_rows_per_asset, prefix='building'))
     if 'pluto' in selected_keys:
         frames.append(_aggregate_pluto(get_asset('pluto').raw_path(), resolution, max_rows_per_asset))
     if 'elevation_points' in selected_keys:
-        frames.append(_aggregate_geojson_points(get_asset('elevation_points').raw_path(), resolution, max_rows_per_asset, prefix='elevation'))
+        frames.append(_aggregate_csv_points(get_asset('elevation_points').raw_path(), resolution, max_rows_per_asset, prefix='elevation'))
 
     merged = _merge_feature_frames(frames)
     merged['resolution'] = resolution
@@ -230,6 +238,28 @@ def _aggregate_geojson_lines(path: Path, resolution: int, densify_step_m: float,
     return _stats_to_frame(stats)
 
 
+def _aggregate_csv_lines(path: Path, resolution: int, densify_step_m: float, max_rows: int | None, *, prefix: str) -> pd.DataFrame:
+    stats: dict[str, dict[str, float]] = {}
+    processed = 0
+    for chunk in pd.read_csv(path, chunksize=5_000):
+        for row in chunk.itertuples(index=False):
+            if max_rows is not None and processed >= max_rows:
+                return _stats_to_frame(stats)
+            processed += 1
+            geometry_text = getattr(row, 'the_geom', None)
+            if not isinstance(geometry_text, str) or not geometry_text:
+                continue
+            cells, length_m = _line_cells_from_geometry(wkt.loads(geometry_text), resolution, densify_step_m)
+            if not cells:
+                continue
+            length_share = length_m / max(len(cells), 1)
+            for cell in cells:
+                bucket = stats.setdefault(cell, {f'{prefix}_segment_count': 0.0, f'{prefix}_length_m': 0.0})
+                bucket[f'{prefix}_segment_count'] += 1.0
+                bucket[f'{prefix}_length_m'] += length_share
+    return _stats_to_frame(stats)
+
+
 def _aggregate_geojson_polygons(path: Path, resolution: int, max_rows: int | None, *, prefix: str) -> pd.DataFrame:
     stats: dict[str, dict[str, float]] = {}
     for idx, feature in enumerate(_iter_geojson_features(path), start=1):
@@ -246,6 +276,36 @@ def _aggregate_geojson_polygons(path: Path, resolution: int, max_rows: int | Non
     return _stats_to_frame(stats)
 
 
+def _aggregate_csv_polygons(path: Path, resolution: int, max_rows: int | None, *, prefix: str) -> pd.DataFrame:
+    stats: dict[str, dict[str, float]] = {}
+    processed = 0
+    for chunk in pd.read_csv(path, chunksize=5_000):
+        for row in chunk.itertuples(index=False):
+            if max_rows is not None and processed >= max_rows:
+                return _stats_to_frame(stats)
+            processed += 1
+            geometry_text = getattr(row, 'the_geom', None)
+            if not isinstance(geometry_text, str) or not geometry_text:
+                continue
+            geometry = wkt.loads(geometry_text)
+            if geometry.is_empty:
+                continue
+            centroid = geometry.centroid
+            cell = h3.latlng_to_cell(float(centroid.y), float(centroid.x), resolution)
+            bucket = stats.setdefault(
+                cell,
+                {
+                    f'{prefix}_count': 0.0,
+                    f'{prefix}_area_m2': 0.0,
+                    f'{prefix}_height_sum': 0.0,
+                },
+            )
+            bucket[f'{prefix}_count'] += 1.0
+            bucket[f'{prefix}_area_m2'] += _safe_float(getattr(row, 'shape_area', 0.0)) or _approx_area_m2(geometry)
+            bucket[f'{prefix}_height_sum'] += _safe_float(getattr(row, 'height_roof', 0.0))
+    return _stats_to_frame(stats)
+
+
 def _aggregate_geojson_points(path: Path, resolution: int, max_rows: int | None, *, prefix: str) -> pd.DataFrame:
     stats: dict[str, dict[str, float]] = {}
     for idx, feature in enumerate(_iter_geojson_features(path), start=1):
@@ -257,6 +317,27 @@ def _aggregate_geojson_points(path: Path, resolution: int, max_rows: int | None,
         cell = h3.latlng_to_cell(float(geometry.y), float(geometry.x), resolution)
         bucket = stats.setdefault(cell, {f'{prefix}_point_count': 0.0})
         bucket[f'{prefix}_point_count'] += 1.0
+    return _stats_to_frame(stats)
+
+
+def _aggregate_csv_points(path: Path, resolution: int, max_rows: int | None, *, prefix: str) -> pd.DataFrame:
+    stats: dict[str, dict[str, float]] = {}
+    processed = 0
+    for chunk in pd.read_csv(path, chunksize=20_000):
+        for row in chunk.itertuples(index=False):
+            if max_rows is not None and processed >= max_rows:
+                return _stats_to_frame(stats)
+            processed += 1
+            geometry_text = getattr(row, 'the_geom', None)
+            if not isinstance(geometry_text, str) or not geometry_text:
+                continue
+            geometry = wkt.loads(geometry_text)
+            if geometry.is_empty:
+                continue
+            cell = h3.latlng_to_cell(float(geometry.y), float(geometry.x), resolution)
+            bucket = stats.setdefault(cell, {f'{prefix}_point_count': 0.0, f'{prefix}_value_sum': 0.0})
+            bucket[f'{prefix}_point_count'] += 1.0
+            bucket[f'{prefix}_value_sum'] += _safe_float(getattr(row, 'elevation', 0.0))
     return _stats_to_frame(stats)
 
 
@@ -304,9 +385,18 @@ def _merge_feature_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
         merged['pluto_mean_bldgarea'] = 0.0
         merged['pluto_mean_unitstotal'] = 0.0
 
+    if 'building_count' in merged.columns:
+        building_denominator = merged['building_count'].replace(0.0, 1.0)
+        merged['building_mean_height'] = _series_or_zeros(merged, 'building_height_sum') / building_denominator
+    else:
+        merged['building_mean_height'] = 0.0
+
     merged['street_complexity'] = (_series_or_zeros(merged, 'street_segment_count') / 12.0).clip(0.0, 1.0)
     merged['building_intensity'] = (_series_or_zeros(merged, 'building_count') / 25.0).clip(0.0, 1.0)
-    merged['building_height_proxy'] = (merged['pluto_mean_numfloors'] / 20.0).clip(0.0, 1.0)
+    merged['building_height_proxy'] = (
+        0.6 * (merged['pluto_mean_numfloors'] / 20.0).clip(0.0, 1.0)
+        + 0.4 * (merged['building_mean_height'] / 80.0).clip(0.0, 1.0)
+    ).clip(0.0, 1.0)
     merged['elevation_complexity'] = (_series_or_zeros(merged, 'elevation_point_count') / 40.0).clip(0.0, 1.0)
 
     street_length = _series_or_zeros(merged, 'street_length_m').replace(0.0, 1.0)
