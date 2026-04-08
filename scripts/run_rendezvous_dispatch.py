@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from rendezvous import ALL_POLICIES, MLMeetingPointSelector, RendezvousConfig, RendezvousDispatcher
-from rendezvous.domain_io import load_domain_assets
+from rendezvous.domain_io import load_domain_assets, load_urban_context_index
 from rendezvous.reporting import summarize_dispatch, write_result_views
 from spatial.router import OSRMRouter
 
@@ -56,6 +56,7 @@ def main() -> None:
     parser.add_argument("--occlusion-lambda", type=float, default=0.25)
     parser.add_argument("--fetch", action="store_true")
     parser.add_argument("--model-path", type=str, default="")
+    parser.add_argument("--disable-urban-context", action="store_true")
     args = parser.parse_args()
 
     config = RendezvousConfig(
@@ -65,6 +66,7 @@ def main() -> None:
         meeting_k_ring=args.meeting_k_ring,
         max_walk_min=args.max_walk_min,
         occlusion_lambda=args.occlusion_lambda,
+        use_urban_context=not args.disable_urban_context,
     )
     domain_config, drivers_df, riders_df = load_domain_assets(
         args.domain,
@@ -79,7 +81,8 @@ def main() -> None:
     if args.model_path:
         ml_selector = MLMeetingPointSelector.load(Path(args.model_path))
     router = OSRMRouter(cache_path=domain_config.route_cache_path, cache_only=not args.fetch)
-    dispatcher = RendezvousDispatcher(config, router=router, ml_selector=ml_selector)
+    urban_context = load_urban_context_index(domain_config, config)
+    dispatcher = RendezvousDispatcher(config, router=router, ml_selector=ml_selector, urban_context=urban_context)
     sampled_riders_df, rider_index, request_states, request_batches = dispatcher.prepare_rider_pool(riders_df)
 
     outcome_rows: list[dict[str, object]] = []

@@ -8,6 +8,7 @@ from data_prep.domain_config import DomainConfig, get_domain_config
 
 from .config import RendezvousConfig
 from .data_types import DriverTrip
+from .urban_context import UrbanContextIndex
 
 
 def load_domain_assets(
@@ -52,3 +53,10 @@ def build_driver_trips(df: pd.DataFrame, config: RendezvousConfig) -> list[Drive
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def load_urban_context_index(config: DomainConfig, rendezvous_config: RendezvousConfig) -> UrbanContextIndex:
+    if not rendezvous_config.use_urban_context:
+        return UrbanContextIndex()
+    resolution = rendezvous_config.urban_context_resolution or rendezvous_config.h3_resolution
+    return UrbanContextIndex.from_parquet(config.urban_context_stats_path(resolution))

@@ -31,6 +31,7 @@ from .meeting_points import (
 )
 from .observability import compute_observability_score, pickup_success_probability
 from .selectors import DeterministicMeetingPointSelector, MLMeetingPointSelector, MeetingPointSelector
+from .urban_context import UrbanContextFeatures, UrbanContextIndex
 
 NYC_LAT = 40.7
 COS_LAT = cos(radians(NYC_LAT))
@@ -51,6 +52,7 @@ def evaluate_driver_policies(
     routes: list[RouteInfo],
     available_rider_ids: set[int] | None = None,
     ml_selector: MLMeetingPointSelector | None = None,
+    urban_context: UrbanContextIndex | None = None,
     seed: int = 0,
 ) -> DriverPolicyEvaluation:
     route_evaluations: list[RouteOpportunityEvaluation] = []
@@ -76,7 +78,14 @@ def evaluate_driver_policies(
             resolution=config.h3_resolution,
             densify_step_m=config.corridor_densify_step_m,
         )
-        opportunities = _build_opportunities(driver, route, route_cells, candidates, config)
+        opportunities = _build_opportunities(
+            driver,
+            route,
+            route_cells,
+            candidates,
+            config,
+            urban_context=urban_context,
+        )
         route_cost = (route.distance_m / METERS_PER_MILE) * driver.cost_per_mile
         nominal_selector = DeterministicMeetingPointSelector(use_observability=False)
         observable_selector = DeterministicMeetingPointSelector(use_observability=True)
@@ -157,6 +166,8 @@ def _build_opportunities(
     route_cells: tuple[str, ...],
     candidates: pd.DataFrame,
     config: RendezvousConfig,
+    *,
+    urban_context: UrbanContextIndex | None = None,
 ) -> list[RendezvousOpportunity]:
     if candidates.empty or not route_cells:
         return []
@@ -194,7 +205,14 @@ def _build_opportunities(
 
             straightness = local_straightness(route_cells, anchor_idx)
             turn = turn_severity(route_cells, anchor_idx)
-            clutter = anchor_clutter(route_cells, anchor_idx)
+            route_clutter = anchor_clutter(route_cells, anchor_idx)
+            context_features = urban_context.lookup(anchor_cell) if urban_context else UrbanContextFeatures()
+            clutter = min(
+                3.0,
+                route_clutter
+                + context_features.urban_clutter_index
+                + max(0.0, 1.0 - context_features.sidewalk_access_score),
+            )
             observability_score = compute_observability_score(
                 local_straightness=straightness,
                 turn_severity=turn,
@@ -222,6 +240,9 @@ def _build_opportunities(
                     local_straightness=straightness,
                     turn_severity=turn,
                     anchor_clutter=clutter,
+                    urban_clutter_index=context_features.urban_clutter_index,
+                    sidewalk_access_score=context_features.sidewalk_access_score,
+                    building_height_proxy=context_features.building_height_proxy,
                     observability_score=observability_score,
                     success_probability=success_probability,
                 )

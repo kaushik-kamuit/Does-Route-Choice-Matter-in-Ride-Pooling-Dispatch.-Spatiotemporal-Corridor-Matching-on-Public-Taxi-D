@@ -24,3 +24,16 @@ Generate them from the repo root with:
 ```powershell
 python visualizations\plot_rendezvous_figures.py
 ```
+
+## Data Note
+
+The recommended data stack on this branch is:
+
+- NYC TLC Yellow trips as the primary demand source
+- official NYC Centerline, Sidewalk Centerline, Building Footprints, PLUTO, and Elevation Points layers aggregated to H3 for the observability proxy
+
+Build the urban-context layer from the repo root with:
+
+```powershell
+python scripts\build_urban_context.py --resolution 9
+```

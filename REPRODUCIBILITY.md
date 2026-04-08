@@ -18,6 +18,14 @@ The active code path depends on:
 
 ## Main Commands
 
+Build the official NYC urban-context layer used by the observability proxy:
+
+```powershell
+python scripts\build_urban_context.py --resolution 9
+```
+
+Use `--max-rows-per-asset` for a quick smoke run, or `--metadata-only` if you only want the source manifest.
+
 Build a meeting-point training dataset:
 
 ```powershell
@@ -56,6 +64,8 @@ python visualizations\plot_rendezvous_figures.py
 
 ## Result Files
 
+- `data/urban_context/processed/urban_context_h3_res9.parquet`
+- `data/urban_context/processed/urban_context_sources.json`
 - `results/rendezvous_driver_outcomes*.csv`
 - `results/rendezvous_route_evaluations*.csv`
 - `results/rendezvous_dispatch_outcomes*.csv`

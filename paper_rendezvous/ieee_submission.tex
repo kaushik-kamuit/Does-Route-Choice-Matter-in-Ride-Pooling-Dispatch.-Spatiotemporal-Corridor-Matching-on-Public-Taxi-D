@@ -26,7 +26,7 @@ ride-pooling, rendezvous, route choice, urban occlusion, meeting-point selection
 Routes expose different sets of common meeting opportunities. In dense urban settings, those opportunities differ not only in accessibility but also in observability and pickup reliability. This paper reframes route choice around that distinction.
 
 \section{Method}
-The method compares three route-valuation views: corridor-only exposure, rendezvous feasibility, and observability-aware rendezvous valuation. Meeting opportunities are represented by route anchor cells and evaluated with a proxy-first observability model.
+The method compares three route-valuation views: corridor-only exposure, rendezvous feasibility, and observability-aware rendezvous valuation. Meeting opportunities are represented by route anchor cells and evaluated with a proxy-first observability model. The current branch augments NYC TLC demand data with official NYC Centerline, Sidewalk Centerline, Building Footprints, PLUTO, and Elevation Points layers aggregated to H3 to provide a reproducible urban-context signal for occlusion-aware routing.
 
 \section{Experiments}
 The primary evidence layer is a controlled single-driver route-choice study. Rolling dispatch is used as a secondary validation layer. The branch writes all paper-facing outputs to the \texttt{results/rendezvous\_*} namespace.

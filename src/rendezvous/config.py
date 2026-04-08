@@ -25,6 +25,8 @@ class RendezvousConfig:
     dispatch_batch_seconds: int = 60
     rider_density_pct: int = 100
     min_travel_fraction: float = 0.05
+    use_urban_context: bool = True
+    urban_context_resolution: int | None = None
 
     def to_dict(self) -> dict[str, int | float | str]:
         return asdict(self)

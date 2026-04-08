@@ -43,6 +43,10 @@ class DomainConfig:
         return ROOT / "models" / self.name
 
     @property
+    def urban_context_dir(self) -> Path:
+        return ROOT / "data" / "urban_context"
+
+    @property
     def route_cache_path(self) -> Path:
         if self.legacy_route_cache_path and self.legacy_route_cache_path.exists():
             return self.legacy_route_cache_path
@@ -120,6 +124,9 @@ class DomainConfig:
         if self.legacy_ml_dir is not None and legacy_path.exists():
             return legacy_path
         return new_path
+
+    def urban_context_stats_path(self, resolution: int = 9) -> Path:
+        return self.urban_context_dir / "processed" / f"urban_context_h3_res{resolution}.parquet"
 
 
 YELLOW_CONFIG = DomainConfig(

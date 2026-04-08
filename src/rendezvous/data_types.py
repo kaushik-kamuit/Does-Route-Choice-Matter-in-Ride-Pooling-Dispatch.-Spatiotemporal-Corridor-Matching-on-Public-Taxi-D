@@ -45,6 +45,9 @@ class RendezvousOpportunity:
     local_straightness: float
     turn_severity: float
     anchor_clutter: float
+    urban_clutter_index: float
+    sidewalk_access_score: float
+    building_height_proxy: float
     observability_score: float
     success_probability: float
 

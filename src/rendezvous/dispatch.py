@@ -13,6 +13,7 @@ from .data_types import DispatchOutcome, DispatchSummary, RequestState
 from .domain_io import build_driver_trips
 from .evaluator import ALL_POLICIES, evaluate_driver_policies
 from .selectors import MLMeetingPointSelector
+from .urban_context import UrbanContextIndex
 
 
 class RendezvousDispatcher:
@@ -22,10 +23,12 @@ class RendezvousDispatcher:
         *,
         router: OSRMRouter,
         ml_selector: MLMeetingPointSelector | None = None,
+        urban_context: UrbanContextIndex | None = None,
     ) -> None:
         self.config = config
         self.router = router
         self.ml_selector = ml_selector
+        self.urban_context = urban_context
         self._batch_delta = pd.Timedelta(seconds=config.dispatch_batch_seconds)
 
     def prepare_rider_pool(
@@ -126,6 +129,7 @@ class RendezvousDispatcher:
                     routes=routes,
                     available_rider_ids=available,
                     ml_selector=self.ml_selector,
+                    urban_context=self.urban_context,
                     seed=seed,
                 )
                 plan = evaluation.plans.get(policy)

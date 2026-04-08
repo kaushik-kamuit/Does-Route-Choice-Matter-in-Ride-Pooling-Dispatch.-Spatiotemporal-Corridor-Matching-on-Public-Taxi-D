@@ -18,6 +18,9 @@ FEATURE_NAMES = [
     "local_straightness",
     "turn_severity",
     "anchor_clutter",
+    "urban_clutter_index",
+    "sidewalk_access_score",
+    "building_height_proxy",
     "observability_score",
 ]
 
@@ -101,5 +104,8 @@ def feature_vector(opportunity: RendezvousOpportunity) -> list[float]:
         opportunity.local_straightness,
         opportunity.turn_severity,
         opportunity.anchor_clutter,
+        opportunity.urban_clutter_index,
+        opportunity.sidewalk_access_score,
+        opportunity.building_height_proxy,
         opportunity.observability_score,
     ]

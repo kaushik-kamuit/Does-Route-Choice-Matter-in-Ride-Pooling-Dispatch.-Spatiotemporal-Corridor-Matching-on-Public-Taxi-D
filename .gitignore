@@ -1,6 +1,7 @@
 # Data files
 data/raw/
 data/processed/
+data/urban_context/
 data/route_cache.json
 *.parquet
 *.db
@@ -36,40 +37,9 @@ venv/
 Thumbs.db
 desktop.ini
 
-# Results - keep structure, but ignore large CSVs
+# Results - keep structure, but ignore generated Paper 2 outputs
 results/*.csv
 results/plots/*.png
-!results/summary.txt
-!results/plots/paper_fig*.png
-!results/realism_primary_summary.csv
-!results/paper_primary_summary.csv
-!results/window_sensitivity.csv
-!results/detour_sensitivity.csv
-!results/strong_baseline_comparison.csv
-!results/temporal_generalization.csv
-!results/h3_corridor_sensitivity.csv
-!results/economics_sensitivity.csv
-!results/runtime_profile.csv
-!results/scenario_assumptions.csv
-!results/strategy_gap_results.csv
-!results/strategy_gap_route_breakdown.csv
-!results/model_comparison.csv
-!results/ablation_results.csv
-!results/dispatch_primary_ci_summary.csv
-!results/dispatch_density_ci_summary.csv
-!results/domain_transfer_ci_summary.csv
-!results/matching_ball_funnel_summary.csv
-!results/sensitivity_grid_summary.csv
-!results/model_feature_family_summary.csv
-!results/model_calibration_summary.csv
-!results/domain_temporal_generalization.csv
-!results/dispatch_yellow_primary.csv
-!results/dispatch_green_primary.csv
-!results/domain_transfer_summary.csv
-!results/dispatch_density_summary.csv
-!results/dispatch_service_wait_summary.csv
-!results/dispatch_window_sensitivity.csv
-!results/dispatch_detour_sensitivity.csv
 results/*.json
 results/plots/*.pdf
 results/dispatch/
@@ -79,17 +49,17 @@ results/green/
 models/green/
 
 # Paper build artefacts
-paper/*.aux
-paper/*.bbl
-paper/*.blg
-paper/*.fdb_latexmk
-paper/*.fls
-paper/*.log
-paper/*.out
-paper/*.synctex.gz
-paper/*.toc
-paper/*.bak*
-paper/figures/*.pdf
+paper_rendezvous/*.aux
+paper_rendezvous/*.bbl
+paper_rendezvous/*.blg
+paper_rendezvous/*.fdb_latexmk
+paper_rendezvous/*.fls
+paper_rendezvous/*.log
+paper_rendezvous/*.out
+paper_rendezvous/*.synctex.gz
+paper_rendezvous/*.toc
+paper_rendezvous/*.bak*
+paper_rendezvous/figures/*.pdf
 
 # Local exported drafts
 Kamuit_*.pdf

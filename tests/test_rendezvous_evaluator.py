@@ -14,6 +14,8 @@ sys.path.insert(0, str(ROOT / "src"))
 from matching.rider_index import RiderIndex
 from rendezvous import RendezvousConfig, evaluate_driver_policies
 from rendezvous.data_types import DriverTrip
+from rendezvous.meeting_points import build_route_anchor_cells
+from rendezvous.urban_context import UrbanContextIndex
 from spatial.router import RouteInfo
 
 
@@ -124,6 +126,55 @@ class RendezvousEvaluatorTests(unittest.TestCase):
         self.assertEqual(
             first.plans["rendezvous_observable"].successful_rider_ids,
             second.plans["rendezvous_observable"].successful_rider_ids,
+        )
+
+    def test_urban_context_can_lower_observable_value(self) -> None:
+        pickup_lat, pickup_lng = 40.7550, -73.9850
+        riders = pd.DataFrame(
+            [
+                {
+                    "pickup_datetime": pd.Timestamp("2015-04-01 10:00:00"),
+                    "pickup_h3": h3.latlng_to_cell(pickup_lat, pickup_lng, 9),
+                    "dropoff_h3": h3.latlng_to_cell(40.7690, -73.9710, 9),
+                    "pickup_lat": pickup_lat,
+                    "pickup_lng": pickup_lng,
+                    "dropoff_lat": 40.7690,
+                    "dropoff_lng": -73.9710,
+                    "passenger_count": 1,
+                    "fare_amount": 18.0,
+                }
+            ]
+        )
+        rider_index = RiderIndex(riders, index_bin_minutes=15)
+        config = RendezvousConfig(meeting_k_ring=1, occlusion_lambda=0.25)
+        route_cells = build_route_anchor_cells(self.route, resolution=9, densify_step_m=80.0)
+        urban_context = UrbanContextIndex.from_frame(
+            pd.DataFrame(
+                [
+                    {
+                        "h3_cell": cell,
+                        "urban_clutter_index": 0.95,
+                        "sidewalk_access_score": 0.05,
+                        "building_height_proxy": 0.85,
+                    }
+                    for cell in route_cells
+                ]
+            )
+        )
+
+        baseline = evaluate_driver_policies(self.driver, rider_index, config, routes=[self.route], seed=42)
+        contextual = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            config,
+            routes=[self.route],
+            urban_context=urban_context,
+            seed=42,
+        )
+
+        self.assertLessEqual(
+            contextual.route_evaluations[0].observable_route_value,
+            baseline.route_evaluations[0].observable_route_value,
         )
 
 

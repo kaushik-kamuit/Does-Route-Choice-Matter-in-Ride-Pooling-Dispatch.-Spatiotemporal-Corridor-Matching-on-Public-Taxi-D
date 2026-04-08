@@ -16,7 +16,7 @@ load_dotenv(ROOT / ".env")
 
 from matching.rider_index import RiderIndex
 from rendezvous import MLMeetingPointSelector, RendezvousConfig, evaluate_driver_policies
-from rendezvous.domain_io import build_driver_trips, load_domain_assets
+from rendezvous.domain_io import build_driver_trips, load_domain_assets, load_urban_context_index
 from rendezvous.reporting import summarize_driver_outcomes, write_result_views
 from spatial.router import OSRMRouter
 
@@ -59,6 +59,7 @@ def main() -> None:
     parser.add_argument("--fetch", action="store_true")
     parser.add_argument("--model-path", type=str, default="")
     parser.add_argument("--max-riders", type=int, default=None)
+    parser.add_argument("--disable-urban-context", action="store_true")
     args = parser.parse_args()
 
     config = RendezvousConfig(
@@ -68,6 +69,7 @@ def main() -> None:
         meeting_k_ring=args.meeting_k_ring,
         max_walk_min=args.max_walk_min,
         occlusion_lambda=args.occlusion_lambda,
+        use_urban_context=not args.disable_urban_context,
     )
     domain_config, drivers_df, riders_df = load_domain_assets(
         args.domain,
@@ -85,6 +87,7 @@ def main() -> None:
     rider_index = RiderIndex(riders_df.reset_index(drop=True), index_bin_minutes=config.index_bin_minutes)
     router = OSRMRouter(cache_path=domain_config.route_cache_path, cache_only=not args.fetch)
     driver_trips = build_driver_trips(drivers_df, config)
+    urban_context = load_urban_context_index(domain_config, config)
     ml_selector = None
     if args.model_path:
         ml_selector = MLMeetingPointSelector.load(Path(args.model_path))
@@ -104,6 +107,7 @@ def main() -> None:
                 config,
                 routes=routes,
                 ml_selector=ml_selector,
+                urban_context=urban_context,
                 seed=seed,
             )
             for policy, plan in evaluation.plans.items():

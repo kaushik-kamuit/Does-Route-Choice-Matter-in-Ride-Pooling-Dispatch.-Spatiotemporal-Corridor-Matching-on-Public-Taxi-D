@@ -15,7 +15,7 @@ load_dotenv(ROOT / ".env")
 
 from matching.rider_index import RiderIndex
 from rendezvous import RendezvousConfig, evaluate_driver_policies
-from rendezvous.domain_io import build_driver_trips, load_domain_assets
+from rendezvous.domain_io import build_driver_trips, load_domain_assets, load_urban_context_index
 from spatial.router import OSRMRouter
 
 DRIVER_COLUMNS = [
@@ -49,9 +49,10 @@ def main() -> None:
     parser.add_argument("--sample", type=int, default=1000)
     parser.add_argument("--max-riders", type=int, default=None)
     parser.add_argument("--fetch", action="store_true")
+    parser.add_argument("--disable-urban-context", action="store_true")
     args = parser.parse_args()
 
-    config = RendezvousConfig(domain=args.domain)
+    config = RendezvousConfig(domain=args.domain, use_urban_context=not args.disable_urban_context)
     domain_config, drivers_df, riders_df = load_domain_assets(
         args.domain,
         split="train",
@@ -66,6 +67,7 @@ def main() -> None:
     rider_index = RiderIndex(riders_df.reset_index(drop=True), index_bin_minutes=config.index_bin_minutes)
     router = OSRMRouter(cache_path=domain_config.route_cache_path, cache_only=not args.fetch)
     driver_trips = build_driver_trips(drivers_df, config)
+    urban_context = load_urban_context_index(domain_config, config)
 
     rows: list[dict[str, object]] = []
     for trip in driver_trips:
@@ -77,6 +79,7 @@ def main() -> None:
             rider_index,
             config,
             routes=routes,
+            urban_context=urban_context,
             seed=42,
         )
         for route_eval in evaluation.route_evaluations:
@@ -92,6 +95,9 @@ def main() -> None:
                         "local_straightness": opportunity.local_straightness,
                         "turn_severity": opportunity.turn_severity,
                         "anchor_clutter": opportunity.anchor_clutter,
+                        "urban_clutter_index": opportunity.urban_clutter_index,
+                        "sidewalk_access_score": opportunity.sidewalk_access_score,
+                        "building_height_proxy": opportunity.building_height_proxy,
                         "observability_score": opportunity.observability_score,
                         "success_probability": opportunity.success_probability,
                     }
@@ -111,6 +117,9 @@ def main() -> None:
             "local_straightness",
             "turn_severity",
             "anchor_clutter",
+            "urban_clutter_index",
+            "sidewalk_access_score",
+            "building_height_proxy",
             "observability_score",
             "success_probability",
         ],
