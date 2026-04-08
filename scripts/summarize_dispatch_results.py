@@ -273,6 +273,105 @@ def summarize_dispatch_outputs() -> None:
             print("  [Dispatch summary] Retrieval-stage funnel columns missing in current primary dispatch outputs; skipping funnel summary.")
     _write(RESULTS / "matching_ball_funnel_summary.csv", pd.DataFrame(funnel_rows))
 
+    summarize_gain_decomposition_from_public_summaries()
+
+
+def summarize_gain_decomposition_from_public_summaries() -> None:
+    dispatch_density_path = RESULTS / "dispatch_density_ci_summary.csv"
+    realism_path = RESULTS / "realism_primary_summary.csv"
+    strategy_gap_path = RESULTS / "strategy_gap_results.csv"
+
+    dispatch_df = pd.read_csv(dispatch_density_path) if dispatch_density_path.exists() else pd.DataFrame()
+    realism_df = pd.read_csv(realism_path) if realism_path.exists() else pd.DataFrame()
+    strategy_gap_df = pd.read_csv(strategy_gap_path) if strategy_gap_path.exists() else pd.DataFrame()
+
+    gain_rows: list[dict[str, object]] = []
+    gap_rows: list[dict[str, object]] = []
+
+    for density in (100, 25, 10):
+        dispatch_sub = dispatch_df[
+            (dispatch_df["domain"] == "yellow")
+            & (dispatch_df["density_pct"] == density)
+        ].copy()
+        if not dispatch_sub.empty:
+            cold = dispatch_sub[dispatch_sub["policy"] == "coldstart"]
+            warm = dispatch_sub[dispatch_sub["policy"] == "warmup"]
+            oracle = dispatch_sub[dispatch_sub["policy"] == "oracle"]
+            heur = dispatch_sub[dispatch_sub["selected_for_paper"] == True]
+            if not cold.empty and not warm.empty and not oracle.empty and not heur.empty:
+                cold_row = cold.iloc[0]
+                warm_row = warm.iloc[0]
+                oracle_row = oracle.iloc[0]
+                heur_row = heur.iloc[0]
+                gain_rows.append(
+                    {
+                        "density_pct": density,
+                        "layer": "dispatch",
+                        "coldstart_profit": float(cold_row["profit_per_launched_driver_mean"]),
+                        "heuristic_profit": float(heur_row["profit_per_launched_driver_mean"]),
+                        "warmup_profit": float(warm_row["profit_per_launched_driver_mean"]),
+                        "oracle_profit": float(oracle_row["profit_per_launched_driver_mean"]),
+                        "route_aware_gain": float(warm_row["profit_per_launched_driver_mean"] - cold_row["profit_per_launched_driver_mean"]),
+                        "heuristic_recovery": float(heur_row["profit_per_launched_driver_mean"] - cold_row["profit_per_launched_driver_mean"]),
+                        "ml_residual": float(warm_row["profit_per_launched_driver_mean"] - heur_row["profit_per_launched_driver_mean"]),
+                        "oracle_headroom": float(oracle_row["profit_per_launched_driver_mean"] - warm_row["profit_per_launched_driver_mean"]),
+                        "selected_heuristic_policy": str(heur_row["policy"]),
+                    }
+                )
+                gap_rows.append(
+                    {
+                        "density_pct": density,
+                        "dispatch_gap_mean": float(warm_row["profit_per_launched_driver_mean"] - heur_row["profit_per_launched_driver_mean"]),
+                        "dispatch_gap_low": float(warm_row["profit_per_launched_driver_ci_low"] - heur_row["profit_per_launched_driver_ci_high"]),
+                        "dispatch_gap_high": float(warm_row["profit_per_launched_driver_ci_high"] - heur_row["profit_per_launched_driver_ci_low"]),
+                        "selected_dispatch_heuristic_policy": str(heur_row["policy"]),
+                    }
+                )
+
+        isolated = realism_df[realism_df["density_pct"] == density].copy()
+        if not isolated.empty:
+            row = isolated.iloc[0]
+            gain_rows.append(
+                {
+                    "density_pct": density,
+                    "layer": "single_driver",
+                    "coldstart_profit": float(row["coldstart_profit"]),
+                    "heuristic_profit": float(row["heuristic_profit"]),
+                    "warmup_profit": float(row["warmup_profit"]),
+                    "oracle_profit": float(row["oracle_profit"]),
+                    "route_aware_gain": float(row["warmup_profit"] - row["coldstart_profit"]),
+                    "heuristic_recovery": float(row["heuristic_profit"] - row["coldstart_profit"]),
+                    "ml_residual": float(row["warmup_profit"] - row["heuristic_profit"]),
+                    "oracle_headroom": float(row["oracle_profit"] - row["warmup_profit"]),
+                    "selected_heuristic_policy": str(row["heuristic_selected_strategy"]),
+                }
+            )
+
+        gap = strategy_gap_df[
+            (strategy_gap_df["density_pct"] == density)
+            & (strategy_gap_df["comparison"] == "warmup_vs_heuristic")
+        ].copy()
+        if not gap.empty:
+            row = gap.iloc[0]
+            matching_gap_row = next((item for item in gap_rows if item["density_pct"] == density), None)
+            if matching_gap_row is None:
+                matching_gap_row = {"density_pct": density}
+                gap_rows.append(matching_gap_row)
+            matching_gap_row.update(
+                {
+                    "single_driver_gap_mean": float(row["mean_diff"]),
+                    "single_driver_gap_low": float(row["boot_low"]),
+                    "single_driver_gap_high": float(row["boot_high"]),
+                }
+            )
+            if "dispatch_gap_mean" in matching_gap_row and float(row["mean_diff"]) != 0.0:
+                matching_gap_row["dispatch_to_single_driver_ratio"] = float(
+                    matching_gap_row["dispatch_gap_mean"] / float(row["mean_diff"])
+                )
+
+    _write(RESULTS / "route_gain_decomposition_summary.csv", pd.DataFrame(gain_rows))
+    _write(RESULTS / "ml_gap_comparison_summary.csv", pd.DataFrame(gap_rows).sort_values("density_pct"))
+
 
 def summarize_model_support() -> None:
     if not IMPORTANCE_PATH.exists() or not MODEL_PATH.exists() or not DATASET_PATH.exists():
@@ -315,6 +414,7 @@ def main() -> None:
     print("Summarizing dispatch and model evidence...")
     summarize_dispatch_outputs()
     summarize_model_support()
+    summarize_gain_decomposition_from_public_summaries()
     print("Evidence summary complete.")
 
 

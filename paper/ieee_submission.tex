@@ -29,7 +29,7 @@
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \raggedbottom
 
-\title{Route-Aware Dispatch for Ride-Pooling:\\Matching-Ball Retrieval and Realism-First Evaluation on NYC Taxi Data}
+\title{Does Route Choice Matter in Ride-Pooling Dispatch?\\Spatiotemporal Corridor Matching on Public Taxi Data}
 \author{Anonymous Authors}
 
 \begin{document}
@@ -39,9 +39,9 @@
 \begin{abstract}
 Route choice in ride-pooling is usually treated as a routing detail or absorbed into a larger dispatch optimizer, even though different feasible paths expose the platform to different rider pools and therefore different matching outcomes. This paper studies route-aware dispatch through a matching-ball pipeline that combines H3 corridor construction, exact post-retrieval request-time filtering, feasibility screening, route scoring, and rolling-horizon evaluation. For each driver origin--destination pair, the system requests three genuine OSRM alternatives, builds route-specific H3 corridors, retrieves candidate riders through coarse spatiotemporal indexing, and then enforces exact time compatibility and route feasibility before policy scoring.
 
-The empirical study uses public NYC Yellow and Green Taxi data, with long trips as proxy drivers and shorter trips as proxy rider requests. Riders are pre-sampled to 25\% for tractable offline simulation, indexed with 15-minute H3 bins for retrieval speed, and filtered afterward by an exact request window. The main dispatch experiment embeds route selection inside a 60-second rolling-horizon simulator with rider exclusivity and one-step conflict recomputation. In the Yellow 10\% retained-sample sparse regime, cold-start yields \(-\$8.08\) per launched driver, the strongest non-ML heuristic yields \(-\$7.30\), ML warm-up yields \(-\$7.15\), and the oracle within the route set yields \(-\$7.02\). Thus the route-aware layer reduces loss by \(\$0.93\) relative to cold-start, while ML retains a smaller \(\$0.16\) edge over the strongest heuristic. The same qualitative ordering is preserved in the Green public-domain robustness run.
+The empirical study uses public NYC Yellow and Green Taxi data, with long trips as proxy drivers and shorter trips as proxy rider requests. Riders are pre-sampled to 25\% for tractable offline simulation, indexed with 15-minute H3 bins for retrieval speed, and filtered afterward by an exact request window. The main dispatch experiment embeds route selection inside a 60-second rolling-horizon simulator with rider exclusivity and one-step conflict recomputation. In the Yellow 10\% retained-sample sparse regime, cold-start incurs \(\$8.08\) loss per launched driver, the strongest non-ML heuristic reduces that loss to \(\$7.30\), ML warm-up reduces it to \(\$7.15\), and the oracle within the route set reaches \(\$7.02\). Thus the route-aware layer reduces operating loss by \(\$0.93\) relative to cold-start, while ML retains a smaller \(\$0.15\) edge over the strongest heuristic. The same qualitative ordering is preserved in the Green public-domain robustness run.
 
-We complement the system-level dispatch results with a larger controlled single-driver study as \emph{secondary evidence} that isolates route-ranking effects. There, the learned scorer shows a clearer advantage over the strongest heuristic, indicating that much of the system-level compression arises from competition for overlapping riders rather than from an absence of route-ranking signal. On temporal holdout, the tuned Yellow LightGBM model reaches \(R^2=0.801\) and RMSE \(=\$5.85\); the Green counterpart reaches \(R^2=0.738\) and RMSE \(=\$2.73\). The paper's central conclusion is therefore not that ML dominates dispatch, but that route-aware candidate construction and realism-first timing materially alter dispatch conclusions, while learned ranking provides a smaller but consistent gain over strong rule-based policies.
+We complement the system-level dispatch results with a larger controlled single-driver study as \emph{secondary evidence} that isolates route-ranking effects. Across both evaluation layers, most of the route-aware gain is already recovered by strong heuristics, while the learned scorer adds a smaller residual improvement. On temporal holdout, the tuned Yellow LightGBM model reaches \(R^2=0.801\) and RMSE \(=\$5.85\); the Green counterpart reaches \(R^2=0.738\) and RMSE \(=\$2.73\). The paper's central conclusion is therefore not that ML dominates dispatch, but that route-aware candidate construction and realism-first timing materially alter dispatch conclusions, while learned ranking provides a smaller but consistent gain over strong rule-based policies.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -60,7 +60,7 @@ The main contributions are:
     \item A realism-first route-evaluation pipeline that separates coarse H3/time retrieval from exact request-time eligibility.
     \item A route-aware matching-ball method that combines H3 corridor construction, one-ring expansion, exact request filtering, directionality, detour control, and greedy seat assignment into one reproducible retrieval-and-scoring layer.
     \item A dispatch-first evaluation in which route warm-up is embedded inside a 60-second rolling-horizon multi-driver simulator, with public cross-domain robustness on NYC Yellow and NYC Green Taxi data.
-    \item A stronger baseline study showing that most of the system-level gain comes from route-aware retrieval versus cold-start, while the learned route ranker provides only a modest edge over the strongest non-ML heuristic.
+    \item A stronger baseline study showing that most of the system-level gain comes from route-aware retrieval versus cold-start, while the learned route ranker provides only a modest edge over the strongest non-ML heuristic and a simple path-buffer comparator.
 \end{enumerate}
 
 Section II reviews related work. Section III describes the data and proxy construction. Section IV introduces the matching-ball retrieval and route-ranking layer. Section V describes the rolling dispatch simulator. Section VI details the experimental design. Section VII presents system-level and controlled results. Section VIII discusses limitations and publication-facing positioning. Section IX concludes.
@@ -70,13 +70,17 @@ Dynamic ride-sharing and ride-pooling have been studied from the perspectives of
 
 Timing assumptions are especially important in pooling studies. Santi \emph{et al.} quantified shareability under short temporal windows and showed that compatibility assumptions materially affect estimated pooling opportunity \cite{santi2014}. Tachet \emph{et al.} further showed that ride-sharing feasibility scales rapidly with density when the delay window remains small \cite{tachet2017}. Those results motivate our explicit distinction between coarse retrieval bins and exact request-time eligibility.
 
-Route recommendation has also been studied as a matching quality lever rather than only a routing problem. Bassem \emph{et al.} explored route recommendation for carpool facilitation \cite{bassem2022}, while Xia \emph{et al.} showed that route structure itself affects matching outcomes in joint social and route networks \cite{xia2019}. In ride-service operations, systematic search and tree-based optimization have been used to improve online decisions \cite{chen2021}. More recent work has pushed toward jointly optimizing matching, routing, and pickup/drop-off design in rolling-horizon settings \cite{stumpe2024,zhou2026}. Our setting is narrower. We do not solve unrestricted fleet assignment or adjustable pickup design. Instead, we evaluate whether route-aware candidate construction and ranking improve outcomes within a small, realistic route set that could be scored before dispatch commitment.
+Ride-hailing dispatch has since grown into a large literature spanning order assignment, multi-driver coordination, repositioning, and reinforcement learning. Learning-and-planning dispatch policies have been studied for large ride-hailing platforms \cite{xu2018dispatch}, including deep value-network dispatch \cite{tang2019deepvalue}, multi-agent fleet management \cite{lin2018fleet}, mean-field ridesharing dispatch \cite{li2019meanfield}, multi-agent order--vehicle distribution matching \cite{zhou2019ovdm}, and joint order-dispatching / fleet-management formulations \cite{jin2019coride}, and unified value-function frameworks \cite{tang2021value}. Queueing-theoretic dispatch models \cite{cheng2019queueing} and practical online driver repositioning systems \cite{xu2020reposition} further show that system-level outcomes depend strongly on how matching and geographic exposure are coupled over time. Pickup-and-delivery and vehicle-routing perspectives \cite{berbeglia2010dynamic,pillac2013dynamic,psaraftis1995dynamic,solomon1987vrptw,laporte2009fifty,toth2002vrp,savelsbergh1995general,cordeau2007dialaride} formalize temporal feasibility and path structure in ways that motivate separating fast retrieval from exact screening. Fleet-scale analyses \cite{vazifeh2018fleet,braverman2019empty} and stochastic matching formulations \cite{bertsimas2019online,ozkan2020dynamic} likewise emphasize idle routing and supply--demand imbalance as first-class controls. Learning-based dispatch, repositioning, and rebalancing \cite{wang2020knowledge,ding2020rebalancing,wei2024repositioning,mao2020avdispatch,wallar2019routing,lei2023rlpricing,liu2022personalizedroute} parallel platform practice \cite{xu2020reposition}, while recent ride-pooling traffic and pricing studies \cite{ke2020ridepooling,karaenke2023expool} connect operational rules to congestion and revenue management. Our paper does not attempt to replace that broader fleet-optimization literature. It focuses on a narrower question that those studies usually absorb into a larger optimizer: whether route choice itself changes the candidate pool enough to matter operationally.
 
-Methodologically, the artifact uses H3 spatial indexing \cite{h3docs}, OSRM route alternatives \cite{osrmapi}, and gradient-boosted trees via LightGBM \cite{ke2017}, with comparison baselines that include XGBoost \cite{chen2016xgboost}, a linear regressor, LambdaRank, and a neural network. The novelty is therefore not ``use ML on taxi data,'' but to combine route-aware retrieval, realism-first timing, and system-level dispatch evaluation in one reproducible package.
+Route recommendation has also been studied as a matching-quality lever rather than only a routing problem. Ma \emph{et al.} developed T-Share, a large-scale dynamic taxi ridesharing service with spatiotemporal indexing \cite{ma2013tshare}. Bassem \emph{et al.} explored route recommendation for carpool facilitation \cite{bassem2022}, while Xia \emph{et al.} showed that route structure itself affects matching outcomes in joint social and route networks \cite{xia2019}. In ride-service operations, systematic search and tree-based optimization have been used to improve online decisions \cite{chen2021}. More recent work has pushed toward jointly optimizing matching, routing, and pickup/drop-off design in rolling-horizon settings \cite{stumpe2024,zhou2026}. Those studies motivate our route-aware formulation, but our methodological emphasis is different: we separate route-aware candidate construction from exact-time eligibility and ask how much of the resulting lift survives inside a lightweight dispatch layer.
+
+Recent ride-hailing work has also highlighted fairness and system design concerns beyond pure efficiency \cite{suhr2019fair,shi2021fair,raman2021fair}. We do not model fairness or repositioning explicitly here, and we therefore avoid claiming a full fleet-management solution. Instead, the paper contributes a reproducible public-data benchmark for route-aware candidate construction under realistic timing assumptions.
+
+Methodologically, the implementation uses H3 spatial indexing \cite{h3docs}, OSRM route alternatives \cite{osrmapi}, and gradient-boosted trees via LightGBM \cite{ke2017} and XGBoost \cite{chen2016xgboost}, with comparison baselines that include a linear regressor, LambdaRank, and a neural network. The novelty is therefore not ``use ML on taxi data,'' but to combine route-aware retrieval, realism-first timing, and system-level dispatch evaluation in one reproducible package.
 
 \section{Data and Proxy Construction}
 \subsection{Public Domains}
-We use the NYC Yellow Taxi and NYC Green Taxi public datasets from Azure Open Datasets \cite{azureyellow,azuregreen,azuredocs}. The retained columns include trip timestamps, pickup and drop-off coordinates, trip distance, fare amount, total amount, tips, and passenger count. January--February 2015 are used for training, March 2015 for temporal validation and model selection, and April 2015 for policy evaluation. Green data are used as a public second domain rather than a second city; the goal is cross-domain robustness under similar exact-point telemetry, not a forced intercity comparison with degraded coordinates.
+We use the NYC Yellow Taxi and NYC Green Taxi public datasets from Azure Open Datasets \cite{azureyellow,azuregreen,azuredocs}. The retained columns include trip timestamps, pickup and drop-off coordinates, trip distance, fare amount, total amount, tips, and passenger count. Table~\ref{tab:data_split} summarizes the temporal split: January--February 2015 are used for training, March 2015 for temporal validation and model selection, and April 2015 for policy evaluation. Green data are used as a public second domain rather than a second city; the goal is cross-domain robustness under similar exact-point telemetry, not a forced intercity comparison with degraded coordinates.
 
 \begin{table}[!t]
 \caption{Temporal split used in both public domains.}
@@ -101,7 +105,10 @@ Trips are partitioned into:
     \item \textbf{Riders:} trips from 0.5 to 10 miles.
 \end{itemize}
 
-Riders are pre-sampled to 25\% before any density sweep. This is an artifact tractability choice, not a claim about full market share. Throughout the paper, \emph{100\% density} therefore means the full retained 25\% rider sample, not full city demand.
+Riders are pre-sampled to 25\% before any density sweep. This is a tractability choice for the public benchmark, not a claim about full market share. Throughout the paper, \emph{100\% density} therefore means the full retained 25\% rider sample, not full city demand.
+
+\subsection{Proxy Validity and Scope}
+The proxy construction deserves explicit scope calibration. The retained taxi trips are not native pooled requests, and the platform-side economics do not encode rider acceptance, cancellation, or driver repositioning behavior. The proxy is nonetheless useful for the narrower question studied here because it preserves exact pickup/drop-off coordinates, timestamps, trip distances, and fare magnitudes at city scale under a fully public benchmark. In other words, the proxy is appropriate for relative comparison of route-aware candidate construction, exact-time eligibility, and route-ranking policies under controlled assumptions. It is not appropriate for claiming true market adoption rates, platform-wide profitability, or behavioral response to pooling incentives.
 
 \subsection{Scenario Assumptions}
 Reported values are \emph{scenario profit} outputs under fixed assumptions. Table~\ref{tab:scenario_assumptions} summarizes the primary configuration and the sensitivity ranges used later in the paper. These settings support controlled comparison; they are not calibrated platform margins.
@@ -135,7 +142,7 @@ Urban speed proxy & 40 km/h & Converts geometric detour into minutes \\
 \end{figure*}
 
 \section{Matching-Ball Retrieval and Route Ranking}
-Figure~\ref{fig:dispatch_architecture} summarizes the paper's end-to-end pipeline. Public taxi trips are converted into proxy drivers and riders, each driver receives three genuine route alternatives, matching-ball retrieval narrows the candidate pool through H3 corridors and coarse time bins, and exact request compatibility is enforced only after retrieval. The resulting route scores then feed both the rolling dispatch simulator and the larger single-driver paired study.
+Figure~\ref{fig:dispatch_architecture} summarizes the paper's end-to-end pipeline, and Table~\ref{tab:notation} collects the notation used throughout this section. Public taxi trips are converted into proxy drivers and riders, each driver receives three genuine route alternatives, matching-ball retrieval narrows the candidate pool through H3 corridors and coarse time bins, and exact request compatibility is enforced only after retrieval. The resulting route scores then feed both the rolling dispatch simulator and the larger single-driver paired study.
 
 \begin{table}[!t]
 \caption{Notation used in the matching-ball and dispatch formulation.}
@@ -165,7 +172,7 @@ Symbol & Meaning \\
 \end{table}
 
 \subsection{H3 Corridor Construction}
-Each driver origin--destination pair is routed through OSRM \cite{osrmapi}. The artifact stores a persistent route cache so that evaluation does not depend on live API latency once the cache is populated. For each driver \(d\), three genuine road-network alternatives are requested. Every route polyline \(\pi_r\) is densified at 80 m spacing and mapped to ordered H3 resolution-9 cells \cite{h3docs}. Let \(R_r=(h_1,\dots,h_m)\) denote the ordered H3 cells traversed by route \(r\). The matchable corridor is
+Each driver origin--destination pair is routed through OSRM \cite{osrmapi}. The implementation stores a persistent route cache so that evaluation does not depend on live API latency once the cache is populated. For each driver \(d\), three genuine road-network alternatives are requested. Every route polyline \(\pi_r\) is densified at 80 m spacing and mapped to ordered H3 resolution-9 cells \cite{h3docs}. Let \(R_r=(h_1,\dots,h_m)\) denote the ordered H3 cells traversed by route \(r\). The matchable corridor is
 \[
 C_r=\bigcup_{h\in R_r}\mathrm{Disk}_{\kappa}(h),
 \]
@@ -248,7 +255,7 @@ Oracle (route set) & Realized scenario profit \(g(d,r)\) & No \\
 \end{tabularx}
 \end{table}
 
-The strongest non-ML heuristic is selected from the four rule-based policies within each reported scenario. In the primary dispatch scenario, the selected heuristic is feasible-rider count.
+Table~\ref{tab:policy_definitions} lists all route-selection policies. The strongest non-ML heuristic is selected from the four rule-based policies within each reported scenario. In the primary dispatch scenario, the selected heuristic is feasible-rider count.
 
 \section{Rolling-Horizon Dispatch Design}
 The main paper contribution is not only route ranking in isolation, but route ranking embedded inside a shared rider pool. We therefore add a rolling-horizon dispatch simulator with 60-second batching. Let \(\mathcal{U}_b\) denote the open request pool at batch \(b\). Drivers are scored route-by-route against \(\mathcal{U}_b\), and each policy produces a provisional score
@@ -261,7 +268,7 @@ When a driver is finalized, the corresponding matched riders are removed from th
 \[
 \mathcal{U}_b^{(j+1)}=\mathcal{U}_b^{(j)}\setminus M_{r_{d_j}^{\phi}},
 \]
-where \(d_j\) is the \(j\)-th driver in batch order. The next driver is then re-evaluated once against \(\mathcal{U}_b^{(j+1)}\). This one-step conflict recomputation is sufficient to enforce rider exclusivity while keeping the simulation low latency.
+where \(d_j\) is the \(j\)-th driver in batch order. The next driver is then re-evaluated once against \(\mathcal{U}_b^{(j+1)}\). This one-step conflict recomputation is sufficient to enforce rider exclusivity while keeping the simulation low latency. Algorithm~\ref{alg:dispatch} formalizes the full batch loop.
 
 \begin{algorithm}[!t]
 \caption{Route-aware retrieval and scoring for one driver}
@@ -313,7 +320,7 @@ This is still a dispatch approximation. It does not reposition vehicles, optimiz
 
 \section{Experimental Design}
 \subsection{System-Level Dispatch}
-The dispatch experiments use 1000 April 2015 Yellow test drivers and five seeds. Repeat-run summaries are aggregated at the seed level before reporting means and 95\% intervals, although many intervals collapse because the dispatch simulator is nearly deterministic once the retained rider sample is fixed. The headline dispatch assumptions are:
+The dispatch experiments use 1000 April 2015 Yellow test drivers and five seeds. Repeat-run summaries are aggregated at the seed level before reporting intervals across retained-sample seeds, although many of those intervals collapse visually because the simulator is nearly deterministic once the retained rider sample is fixed. These intervals should therefore be read as repeat-run dispersion under the retained-sample protocol rather than as broad inferential uncertainty. The headline dispatch assumptions are:
 \begin{itemize}
     \item domain = Yellow,
     \item batch cadence = 60 seconds,
@@ -339,11 +346,11 @@ For a policy \(\phi\), the main reported system metrics are
 \sum_{d \in \mathcal{D}_\phi^{\mathrm{launch}}} |M_{r_d^\phi}|,
 \end{aligned}
 \end{equation}
-that is, scenario profit per launched driver and matched riders per launched driver. Because \(\bar g_\phi\) is negative in the sparse regimes, comparative interpretation in the paper emphasizes \emph{loss reduction} relative to cold-start rather than absolute profit creation.
+that is, scenario profit per launched driver and matched riders per launched driver. Because \(\bar g_\phi\) is negative in the sparse regimes, the main presentation in the Results section emphasizes \emph{operating loss} and \emph{loss reduction} relative to cold-start rather than absolute profit creation.
 
 We report:
 \begin{itemize}
-    \item \textbf{System metrics:} scenario profit per launched driver, rider service rate, mean wait, matched riders per driver, seat occupancy, and dispatch runtime.
+    \item \textbf{System metrics:} scenario profit per launched driver, operating loss per launched driver, rider service rate, mean wait, matched riders per driver, seat occupancy, and dispatch runtime.
     \item \textbf{Model metrics:} \(R^2\), RMSE, MAE, and route rank-1 accuracy.
     \item \textbf{Paired gaps:} mean driver-level differences, bootstrap confidence intervals, and win/tie/loss rates in the isolated-driver study.
 \end{itemize}
@@ -360,12 +367,12 @@ Tables~\ref{tab:dispatch_primary} and \ref{tab:dispatch_delta} are the paper's m
 \setlength{\tabcolsep}{2.6pt}
 \begin{tabular}{lrrrr}
 \toprule
-Policy & Scenario profit/driver & Loss reduction & Matched/driver & Wait (min) \\
+Policy & Loss/driver (\$) & Loss reduction & Matched/driver & Wait (min) \\
 \midrule
-Cold-start & -8.08 & --- & 0.16 & 2.51 \\
-Best heuristic & -7.30 & +0.77 & 0.29 & 2.52 \\
-ML warm-up & \textbf{-7.15} & \textbf{+0.93} & 0.27 & 2.56 \\
-Oracle (route set) & -7.02 & +1.05 & 0.29 & 2.54 \\
+Cold-start & 8.08 & --- & 0.16 & 2.51 \\
+Best heuristic & 7.30 & 0.78 & 0.29 & 2.52 \\
+ML warm-up & \textbf{7.15} & \textbf{0.93} & 0.27 & 2.56 \\
+Oracle (route set) & 7.02 & 1.06 & 0.29 & 2.54 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -379,35 +386,30 @@ Oracle (route set) & -7.02 & +1.05 & 0.29 & 2.54 \\
 \toprule
 Comparison & Delta (\$/driver) & Relative loss reduction \\
 \midrule
-Best heuristic vs.\ cold-start & +0.77 & 9.5\% \\
+Best heuristic vs.\ cold-start & +0.78 & 9.7\% \\
 ML warm-up vs.\ cold-start & +0.93 & 11.5\% \\
-Oracle vs.\ cold-start & +1.05 & 13.0\% \\
-ML warm-up vs.\ best heuristic & +0.16 & 2.0\% \\
+Oracle vs.\ cold-start & +1.06 & 13.1\% \\
+ML warm-up vs.\ best heuristic & +0.15 & 1.9\% \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Two points matter. First, the route-aware layer clearly reduces operating loss relative to cold-start: \(\$0.93\) per launched driver, or about 11.5\% less loss in the sparse regime. Second, the learned ranker does \emph{not} dominate the strongest heuristic. Its edge is only \(\$0.16\) per driver, and the strongest heuristic actually matches slightly more riders. This is the right publication message: route-aware retrieval and ranking matter, while most of the system-level improvement is already captured by strong rule-based policies.
+Two points matter. First, the route-aware layer clearly reduces operating loss relative to cold-start: \(\$0.93\) per launched driver, or about 11.5\% less loss in the sparse regime. Second, the learned ranker does \emph{not} dominate the strongest heuristic. Its edge is only \(\$0.15\) per driver, and the strongest heuristic actually matches slightly more riders. This is the right publication message: route-aware retrieval and ranking matter, while most of the system-level improvement is already captured by strong rule-based policies.
 
 \subsection{Dispatch Density Response}
-Figure~\ref{fig:dispatch_density} places the 10\% sparse headline result inside the full Yellow dispatch density sweep. At the full retained-sample benchmark, cold-start is \(-\$2.60\), the strongest heuristic is \(-\$0.40\), warm-up is \(-\$0.29\), and the within-route-set oracle is \(+\$0.15\). At 25\% retained-sample density, the corresponding values are \(-\$6.87\), \(-\$5.63\), \(-\$5.48\), and \(-\$5.30\). At 10\%, they are \(-\$8.08\), \(-\$7.30\), \(-\$7.15\), and \(-\$7.02\). In other words, the route-aware layer helps at every density, but absolute margins deteriorate as the retained rider pool thins. The interval bars in Figure~\ref{fig:dispatch_density} are repeat-run 95\% intervals across seeds; in several cells they collapse visually because only the retained rider sample changes across seeds and the simulator is otherwise nearly deterministic.
+Figure~\ref{fig:dispatch_density} places the 10\% sparse headline result inside the full Yellow dispatch density sweep, plotting \emph{savings over cold-start} so the policy ordering is legible at every density level. At 10\% retained-sample density, the strongest heuristic saves \(\$0.78\) per launched driver relative to cold-start, ML warm-up saves \(\$0.93\), and the within-route-set oracle saves \(\$1.06\). At 25\%, the corresponding savings are \(\$1.24\), \(\$1.39\), and \(\$1.57\). At the full 100\% retained-sample benchmark, they are \(\$2.20\), \(\$2.31\), and \(\$2.75\). The route-aware layer consistently improves on cold-start at every density, and absolute savings grow as the rider pool densifies. The simulator is near-deterministic across seeds at fixed density; repeat-run variation is smaller than the marker size.
+
+As a simple external-style sanity baseline, we also reran a 1 km path-buffer policy on a deterministic cached-route Yellow subset (250 drivers, five seeds) using the same exact-time and detour rules. That comparator improves upon cold-start but remains materially weaker than matching-ball retrieval. In dispatch at 10\%, the path-buffer policy reduces loss only from \(\$8.40\) to \(\$8.28\), whereas the paper's strongest matching-ball heuristic reaches \(\$7.30\). In the controlled single-driver study, the same path-buffer policy improves 25\% loss from \(\$5.59\) to \(\$4.40\), but still trails the paper-best matching-ball heuristic at \(\$3.53\). This sanity check does not replace a literature-grade external dispatch baseline, but it does show that the H3 corridor construction is not merely reproducing what a simple geometric buffer already captures.
 
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=\textwidth]{figures/paper_fig3_dispatch_density.png}
-\caption{Dispatch density response under 60-second batches and a 5-minute exact request window. Panel (a) shows that route-aware policies reduce operating loss relative to cold-start across all retained-sample densities, although absolute margins deteriorate as the rider pool thins. Panel (b) shows the corresponding matched riders per launched driver. The 10\% column is the paper's harsh sparse regime, while 100\% denotes the full retained 25\% rider sample rather than full city demand.}
+\caption{Dispatch density response under 60-second batches and a 5-minute exact request window. \emph{(a)} Savings over cold-start per launched driver (cold-start = \$0 reference line); plotting the \emph{gain} rather than the absolute loss spreads the policy lines and makes the ordering readable at every density. \emph{(b)} Matched riders per launched driver. The best heuristic leads ML warm-up in throughput at every density because it directly maximises compatible rider count (\texttt{heuristic\_feasible\_count}), whereas ML warm-up optimises route profit; the two objectives diverge slightly under sparse supply. The x-axis runs sparse (10\%) to dense (100\%), where 100\% refers to the full pre-sampled 25\% rider pool. The simulator is near-deterministic across seeds at fixed density; repeat-run variation is smaller than the marker size.}
 \label{fig:dispatch_density}
 \end{figure*}
 
 \subsection{Cross-Domain Robustness}
-Figure~\ref{fig:cross_domain} and Table~\ref{tab:domain_transfer} report the public cross-domain comparison for the harsher 10\% stress-test regime. Green reproduces the same qualitative hierarchy as Yellow: cold-start is worst, warm-up is better, and the oracle within the route set remains the upper bound. The Green stress test is slightly less negative overall, and its wait times are lower.
-
-\begin{figure}[!t]
-\centering
-\includegraphics[width=\linewidth]{figures/paper_fig4_cross_domain.png}
-\caption{Cross-domain robustness under the same sparse dispatch regime. Circles denote Yellow and diamonds denote Green under 60-second batches, a 5-minute exact request window, 10\% retained-sample density, and a 4-minute detour. The key result is that the policy ordering is preserved across domains even though the absolute margins shift.}
-\label{fig:cross_domain}
-\end{figure}
+Table~\ref{tab:domain_transfer} reports the public cross-domain comparison for the harsher 10\% stress-test regime. Green reproduces the same qualitative hierarchy as Yellow: cold-start is worst, warm-up is better, and the oracle within the route set remains the upper bound. The Green stress test is slightly less negative overall, and its wait times are lower.
 
 \begin{table}[!t]
 \caption{Stress-test dispatch scenario across public domains. Yellow and Green both use 60-second batching, a 5-minute exact request window, 10\% retained-sample density, 4-minute detour, 1000 drivers, and five seeds. Comparative deltas are interpreted relative to the domain-specific cold-start baseline.}
@@ -417,32 +419,34 @@ Figure~\ref{fig:cross_domain} and Table~\ref{tab:domain_transfer} report the pub
 \setlength{\tabcolsep}{2.4pt}
 \begin{tabular}{lrrrr}
 \toprule
-Policy & Yellow profit & Green profit & Yellow wait & Green wait \\
+Policy & Yellow loss & Green loss & Yellow wait & Green wait \\
 \midrule
-Cold-start & -8.08 & -7.66 & 2.51 & 1.87 \\
-Best heuristic & -7.30 & -7.54 & 2.52 & 2.14 \\
-ML warm-up & \textbf{-7.15} & \textbf{-7.27} & 2.56 & 2.07 \\
-Oracle (route set) & -7.02 & -7.25 & 2.54 & 2.05 \\
+Cold-start & 8.08 & 7.66 & 2.51 & 1.87 \\
+Best heuristic & 7.30 & 7.54 & 2.52 & 2.14 \\
+ML warm-up & \textbf{7.15} & \textbf{7.27} & 2.56 & 2.07 \\
+Oracle (route set) & 7.02 & 7.25 & 2.54 & 2.05 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The warm-up edge over the strongest heuristic is \(\$0.16\) per launched driver in Yellow and \(\$0.28\) in Green. That is still a modest margin, but it survives the domain shift and therefore supports the paper's narrower, reviewer-safe claim: route-aware retrieval plus realistic timing help dispatch, and ML is a competitive route-ranker rather than a dramatic winner even under a harsher stress test.
+The warm-up edge over the strongest heuristic is \(\$0.15\) per launched driver in Yellow and \(\$0.27\) in Green. That is still a modest margin, but it survives the public-domain shift and therefore supports the paper's narrower, reviewer-safe claim: route-aware retrieval plus realistic timing help dispatch, and ML is a competitive route-ranker rather than a dramatic winner even under a harsher stress test.
 
 \subsection{Controlled Single-Driver Mechanism}
-The dispatch results answer the system question, but they do not isolate route-ranking effects. Figure~\ref{fig:single_driver_density} therefore reports the larger single-driver paired study under the same realism-first timing assumptions. In that controlled experiment, the 10\% sparse regime moves from \(-\$7.40\) under cold-start to \(-\$6.17\) under ML warm-up, while the strongest heuristic reaches \(-\$6.28\) and the within-route-set oracle reaches \(-\$5.95\). At 25\%, the corresponding values are \(-\$5.26\), \(-\$3.53\), \(-\$3.42\), and \(-\$3.08\). Panel (a) decomposes the warm-up gain into what is already recovered by the strongest heuristic and the smaller extra lift from ML; panel (b) reports the warm-up-vs-strongest-heuristic bootstrap interval directly. At 10\%, that mean gap is \(\$0.11\) with bootstrap 95\% confidence interval \([\$0.07,\$0.16]\); at 25\%, it is \(\$0.10\) with interval \([\$0.05,\$0.16]\).
+The dispatch results answer the system question, but they do not isolate route-ranking effects. Figure~\ref{fig:single_driver_density} therefore compares the larger single-driver paired study against the dispatch layer under the same realism-first timing assumptions. In the controlled experiment, the 10\% sparse regime moves from \(\$7.40\) loss under cold-start to \(\$6.17\) under ML warm-up, while the strongest heuristic reaches \(\$6.28\) and the within-route-set oracle reaches \(\$5.95\). At 25\%, the corresponding losses are \(\$5.26\), \(\$3.53\), \(\$3.42\), and \(\$3.08\). Panel (a) shows that, in both dispatch and isolated evaluation, most of the route-aware gain is already recovered by the strongest heuristic, with ML adding a smaller residual lift and the oracle retaining limited headroom. Panel (b) then compares the warm-up-vs-strongest-heuristic gap directly across densities in both evaluation layers. The main result is not that competition always collapses the ML edge; it is that the ML contribution remains secondary to heuristic recovery in both layers and never becomes the dominant source of route-aware gain.
+
+In the single-driver study, the 10\% warm-up-versus-strongest-heuristic gap is \(\$0.11\) with bootstrap interval \([\$0.07,\$0.16]\); at 25\%, the corresponding gap is \(\$0.10\) with interval \([\$0.05,\$0.16]\). These paired gaps confirm that the learned scorer retains signal beyond the heuristic, but only as a residual layer on top of route-aware retrieval.
 
 \begin{figure}[!t]
 \centering
 \includegraphics[width=\linewidth]{figures/paper_fig5_single_driver_mechanism.png}
-\caption{Controlled single-driver evidence under the same realism-first timing assumptions. Panel (a) decomposes the warm-up improvement over cold-start into the portion already recovered by the strongest heuristic and the smaller incremental lift from ML; the purple marker shows the remaining oracle headroom within the evaluated route set. Panel (b) reports the warm-up-versus-strongest-heuristic gap with bootstrap 95\% confidence intervals, showing that the learned ranker has a clearer isolated advantage than it does under shared dispatch competition.}
+\caption{Route-aware gain decomposition across evaluation layers. \emph{(a)} 100\%-stacked bars showing the composition of oracle-achievable gain at each density and evaluation layer (Disp.\ = rolling dispatch; Isol.\ = controlled single-driver study). Heuristic recovery accounts for 83--95\% of achievable gain; ML residual adds 5--16\%; remaining oracle headroom is small. \emph{(b)} ML warm-up minus best heuristic with 95\% bootstrap intervals, showing the residual ML edge survives at both evaluation layers and all densities.}
 \label{fig:single_driver_density}
 \end{figure}
 
-This difference between the two result layers is informative rather than contradictory. In isolation, learned ranking has a clearer edge because it can optimize per-driver route profit without competing claims from other drivers. In the rolling dispatch simulator, exclusivity compresses that edge because many of the most valuable riders are claimed by the strongest rule-based routes as well. That is exactly why a dispatch-first paper needs both system-level and controlled analyses.
+This relationship between the two result layers is informative rather than contradictory. The single-driver study confirms that the learned scorer retains a positive paired advantage over the strongest heuristic, but the decomposition also shows that most of the route-aware gain is heuristic recovery in the first place. The dispatch layer then asks whether that residual lift survives under rider exclusivity and shared demand; it does, but only as a modest secondary effect. That is exactly why a dispatch-first paper needs both system-level and controlled analyses.
 
 \subsection{Model Support}
-Table~\ref{tab:model_quality} reports Yellow temporal-holdout model quality, and Figure~\ref{fig:model_support} shows why the deployed LightGBM scorer is technically plausible rather than just numerically competitive. The tuned Yellow model reaches \(R^2=0.801\), RMSE \(=\$5.85\), and 76.1\% route rank-1 accuracy. The tuned Green model reaches \(R^2=0.738\) and RMSE \(=\$2.73\). The MLP edges the Yellow holdout fit slightly with \(R^2=0.804\) and RMSE \(=\$5.81\), while LambdaRank leads rank-1 accuracy at 80.5\% but with poor absolute fit. We therefore keep tuned LightGBM because it combines near-best regression quality, competitive route ranking, and stable calibration.
+Table~\ref{tab:model_quality} reports Yellow temporal-holdout model quality, and Figure~\ref{fig:model_support} summarizes holdout calibration for the deployed LightGBM scorer. The tuned Yellow model reaches \(R^2=0.801\), RMSE \(=\$5.85\), and 76.1\% route rank-1 accuracy. The tuned Green model reaches \(R^2=0.738\) and RMSE \(=\$2.73\). The MLP edges the Yellow holdout fit slightly with \(R^2=0.804\) and RMSE \(=\$5.81\), while LambdaRank leads rank-1 accuracy at 80.5\% but with substantially weaker absolute fit. We therefore keep tuned LightGBM because it offers the best balance of regression quality and route ranking among the models with usable score calibration. Feature-importance aggregation on the training build attributes about 89\% of total gain to spatial-demand context, 6\% to route geometry, 3\% to landmark proxies, and 2\% to coarse temporal bins, which matches the intended role of the scorer as a corridor- and demand-aware route value model rather than a single-feature shortcut.
 
 \begin{table}[!t]
 \caption{Yellow model quality on the March 2015 temporal holdout. January--February 2015 are used for training; March 2015 is used for validation and selection before final retraining on January--March for April policy evaluation.}
@@ -454,36 +458,35 @@ Table~\ref{tab:model_quality} reports Yellow temporal-holdout model quality, and
 \toprule
 Model & \(R^2\) & RMSE & Rank-1 & Deployment role \\
 \midrule
-Ridge (linear) & 0.713 & 7.02 & 76.1\% & Simpler baseline \\
-LightGBM (baseline) & 0.801 & 5.85 & 75.6\% & Strong baseline tree model \\
+Ridge (linear) & 0.692 & 6.92 & 68.1\% & Simpler baseline \\
+LightGBM (baseline) & 0.786 & 6.02 & 74.2\% & Untuned tree baseline \\
 LightGBM (tuned) & 0.801 & 5.85 & 76.1\% & \textbf{Selected scorer} \\
-LGB LambdaRank & 0.117 & 12.32 & \textbf{80.5\%} & Ranking only; poor calibration \\
-XGBoost & 0.801 & 5.85 & 75.6\% & Competitive alternative \\
-MLP (Neural Net) & \textbf{0.804} & \textbf{5.81} & 75.1\% & Better fit, weaker stability \\
+LambdaRank & 0.611 & 7.90 & \textbf{80.5\%} & Ranking-oriented, weak calibration \\
+MLP (Neural Net) & \textbf{0.804} & \textbf{5.81} & 74.8\% & Slightly better fit, weaker ranking \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure*}[!t]
+\begin{figure}[!t]
 \centering
-\includegraphics[width=\textwidth]{figures/paper_fig6_model_support.png}
-\caption{Model-support evidence for the deployed LightGBM scorer. Panel (a) shows that the model is driven primarily by spatial-demand context rather than by a single proxy feature family. Panel (b) shows that the scorer remains calibrated across low-, medium-, and high-profit deciles on the March temporal holdout, which supports its use as a route-ranking model rather than only as a regression benchmark.}
+\includegraphics[width=\linewidth]{figures/paper_fig6_model_support.png}
+\caption{Holdout calibration for the deployed Yellow LightGBM scorer (March 2015 temporal holdout). Points are decile means of actual versus predicted route profit; the shaded band is the model's interquartile prediction range across routes in each decile. Reported \(R^2\) and RMSE are taken from the model comparison table on the same holdout.}
 \label{fig:model_support}
-\end{figure*}
+\end{figure}
 
-Figure~\ref{fig:model_support}(a) shows that the scorer is driven mainly by spatial-demand context, especially corridor fare density and rider-fare signals. Figure~\ref{fig:model_support}(b) then shows that the model tracks low-, medium-, and high-profit routes on the March temporal holdout without collapsing into a single average prediction. This is the right type of support for a route scorer: not only predictive fit, but calibration across the full operating range.
+Figure~\ref{fig:model_support} shows that predicted means track decile-level actual profits on the March holdout without collapsing to a single average, which is the behavior expected of a route scorer used for ranking within a small alternative set. The feature-family breakdown stated above corroborates that the model leans on spatial-demand context rather than on a single proxy family.
 
 \subsection{Sensitivity and Runtime}
-Figure~\ref{fig:sensitivity} refines the realism story inside the 10\% stress test. In Yellow dispatch at 10\% density, a tight 2-minute request window with a 2-minute detour yields only \(\$0.36\) of warm-up improvement over cold-start. The 5-minute / 4-minute stress-test baseline yields \(\$0.91\). A looser 10-minute request window with a 6-minute detour yields \(\$1.36\). Request-window assumptions therefore matter more than moderate detour changes.
+Figure~\ref{fig:sensitivity} refines the realism story inside the 10\% stress test. In Yellow dispatch at 10\% density, a tight 2-minute request window with a 2-minute detour yields only \(\$0.36\) of warm-up improvement over cold-start. The primary 5-minute / 4-minute cell yields \(\$0.91\) in the sensitivity grid, consistent with the \(\$0.93\) reported in Table~\ref{tab:dispatch_primary} (the small difference reflects separate seeded runs). A looser 10-minute request window with a 6-minute detour yields \(\$1.36\). Request-window assumptions therefore matter more than moderate detour changes.
 
 \begin{figure}[!t]
 \centering
 \includegraphics[width=\linewidth]{figures/paper_fig7_sensitivity.png}
-\caption{Yellow dispatch sensitivity at 10\% retained-sample density. Each cell reports warm-up improvement over cold-start in scenario profit per launched driver. The heatmap shows that request-window assumptions move the dispatch result more than moderate detour relaxation, reinforcing the paper's realism-first claim.}
+\caption{Yellow dispatch sensitivity at 10\% retained-sample density. Each cell reports warm-up improvement over cold-start in scenario profit per launched driver, equivalently the reduction in operating loss. The heatmap shows that request-window assumptions move the dispatch result more than moderate detour relaxation, reinforcing the paper's realism-first claim.}
 \label{fig:sensitivity}
 \end{figure}
 
-Retrieval geometry also matters. In the single-driver H3 sensitivity, a coarser H3-8 corridor drops warm-up to \(-\$8.88\), while a wider two-ring corridor raises warm-up to \(-\$4.91\) but lets the strongest heuristic overtake ML by about \(\$0.05\). The corridor definition therefore changes both the candidate pool and the difficulty of the route-ranking problem.
+Retrieval geometry also matters. In the single-driver H3 sensitivity, a coarser H3-8 corridor increases warm-up loss to \(\$8.88\), while a wider two-ring corridor reduces it to \(\$4.91\) but lets the strongest heuristic overtake ML by about \(\$0.05\). The corridor definition therefore changes both the candidate pool and the difficulty of the route-ranking problem.
 
 Finally, the dispatch layer is lightweight once the route cache is populated. Table~\ref{tab:runtime} reports mean per-driver evaluation time and mean batch runtime for the primary Yellow dispatch scenario. All four reported policies remain around 17.2--17.4 ms per driver and 36.6--37.1 ms per batch on average.
 
@@ -510,18 +513,20 @@ The empirical evidence supports three substantive conclusions.
 
 First, route-aware candidate construction materially changes dispatch outcomes. Even after exact request-window filtering and rider exclusivity, the route-aware layer consistently reduces operating loss relative to default cold-start routing in both Yellow and Green. This is the paper's primary systems result: route choice is not merely a navigation detail, but a mechanism that changes which riders are realistically matchable.
 
-Second, learned route ranking is useful but not dominant once dispatch competition is introduced. In the primary Yellow sparse scenario, ML warm-up improves upon the strongest heuristic by only \(\$0.16\) per launched driver; in Green the corresponding margin is \(\$0.28\). The controlled single-driver study shows that the learned scorer has a clearer isolated advantage, so the small dispatch gap should not be read as absence of signal. Rather, it indicates that much of the residual headroom is compressed when multiple drivers compete for overlapping high-value riders in the same rolling request pool.
+Second, learned route ranking is useful but not dominant once strong heuristics are already in place. In the primary Yellow sparse scenario, ML warm-up improves upon the strongest heuristic by only \(\$0.15\) per launched driver; in Green the corresponding margin is \(\$0.27\). The single-driver and dispatch decompositions show why this is not a contradiction: most of the route-aware gain is already recovered by heuristic retrieval and route choice, leaving ML to capture only a smaller residual layer of value.
 
-Third, exact timing is a methodological lever, not a bookkeeping detail. The sensitivity analysis shows that request-window assumptions shift results more than moderate detour relaxation. This implies that ride-pooling studies should distinguish retrieval acceleration tricks from the actual matching rule. In the present artifact, H3 corridors and 15-minute bins narrow the search; exact timestamp compatibility determines which riders remain eligible.
+Third, exact timing is a methodological lever, not a bookkeeping detail. The sensitivity analysis shows that request-window assumptions shift results more than moderate detour relaxation. This implies that ride-pooling studies should distinguish retrieval acceleration tricks from the actual matching rule. In the present implementation, H3 corridors and 15-minute bins narrow the search; exact timestamp compatibility determines which riders remain eligible.
 
-The study nonetheless remains bounded. It is an offline proxy design based on taxi trajectories rather than native pooled requests. The dispatch simulator is rolling-horizon and exclusivity-aware but does not model repositioning or full many-driver global assignment. The public second domain, NYC Green, strengthens robustness but does not substitute for a true second city or restricted operator dataset. The dispatch study uses 1000 drivers and five seeds, which is sufficient for the present comparative evidence but not for a full-scale deployment claim. Finally, scenario profit remains a comparative operating metric under fixed share and cost assumptions rather than a calibrated financial forecast.
+The added path-buffer sanity baseline also sharpens the retrieval claim. A naive 1 km geometric buffer around the route can recover some low-hanging candidate overlap, but it does not approach the matching-ball policies under the same timing and feasibility rules. That gap suggests the main value is not simply ``using more geometry,'' but using route-specific corridor construction that is explicit about both pickup and drop-off compatibility before scoring.
+
+The study nonetheless remains bounded. It is an offline proxy design based on taxi trajectories rather than native pooled requests, so the public benchmark should be read as a controlled test of route-aware candidate construction rather than as an ecological replica of live pooled-demand behavior. The dispatch simulator is rolling-horizon and exclusivity-aware but does not model repositioning or full many-driver global assignment. The public second domain, NYC Green, strengthens robustness but does not substitute for a true second city or restricted operator dataset. The dispatch study uses 1000 drivers and five seeds, which is sufficient for the present comparative evidence but not for a full-scale deployment claim. Finally, the reported losses and loss reductions are scenario-based operating metrics under fixed share and cost assumptions rather than calibrated financial forecasts.
 
 These constraints narrow the paper's scope, but they sharpen its contribution. The paper does not claim that a learned route scorer solves dispatch. It shows, more specifically, that route-aware matching-ball retrieval and exact-time eligibility materially change route-selection conclusions, that those conclusions persist across two public NYC domains, and that strong non-ML heuristics remain the right benchmark for learned ranking in shared dispatch environments.
 
 \section{Conclusion}
 This paper presents a dispatch-first evaluation of route-aware warm-up for ride-pooling. The core method is a matching-ball retrieval layer built from H3 corridors, exact request-time filtering, feasibility checks, and route ranking over genuine OSRM alternatives. Embedded inside a rolling-horizon dispatch simulator, that route-aware layer consistently reduces operating loss relative to cold-start routing in the Yellow sparse scenario and preserves the same policy ordering in Green.
 
-The controlled paired study clarifies the mechanism behind the system-level result. Learned route ranking has a clearer advantage when evaluated in isolation, but much of that gain compresses once drivers compete for overlapping riders in a shared request pool. The paper therefore contributes both a route-aware dispatch method and a more disciplined evaluation protocol for judging route-selection policies under realistic timing assumptions.
+The controlled paired study clarifies the mechanism behind the system-level result. Strong heuristics recover most of the route-aware gain in both isolated and shared settings, while learned route ranking contributes a smaller residual improvement. The paper therefore contributes both a route-aware dispatch method and a more disciplined evaluation protocol for judging route-selection policies under realistic timing assumptions.
 
 The immediate implication is methodological as much as operational: ride-pooling studies should not conflate coarse retrieval bins with actual request compatibility, and they should treat route choice as part of candidate construction rather than as a downstream routing detail. Future work can expand this formulation with larger dispatch studies, additional public markets or restricted operational data, and richer many-driver assignment and repositioning logic. Until then, the present evidence supports a narrower but important conclusion: route-aware matching-ball dispatch is worthwhile, exact timing materially matters, and strong heuristics remain the correct benchmark for learned route ranking.
 

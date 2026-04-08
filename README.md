@@ -14,6 +14,7 @@ The current artifact is centered on:
 - long trips as proxy drivers and short trips as proxy riders
 - H3 corridor indexing plus a matching-ball feasibility filter
 - a LightGBM route-profit predictor trained on 38 features
+- a simple geometric `heuristic_path_buffer` comparator for future full-data reruns
 - a realism-first request-time filter that separates 15-minute index bins from the true matching window
 - a rolling-horizon dispatch simulator with 60-second batching and rider exclusivity
 
@@ -28,25 +29,25 @@ The main paper scenario uses:
 - index lookup: `15-minute bins` with `±1` adjacent bins
 - detour cap: `4 minutes`
 
-In the primary Yellow dispatch scenario, mean scenario profit per launched driver is:
+In the primary Yellow dispatch scenario, operating loss per launched driver is:
 
-| Policy | Yellow dispatch profit/driver |
+| Policy | Yellow dispatch loss/driver |
 |---|---:|
-| `Cold-start` | `-$8.08` |
-| `Best heuristic (feasible count)` | `-$7.30` |
-| `ML warm-up` | `-$7.15` |
-| `Oracle (within route set)` | `-$7.02` |
+| `Cold-start` | `$8.08` |
+| `Best heuristic (feasible count)` | `$7.30` |
+| `ML warm-up` | `$7.15` |
+| `Oracle (within route set)` | `$7.02` |
 
 The public Green robustness run under the same primary scenario is:
 
-| Policy | Green dispatch profit/driver |
+| Policy | Green dispatch loss/driver |
 |---|---:|
-| `Cold-start` | `-$7.66` |
-| `Best heuristic (feasible count)` | `-$7.54` |
-| `ML warm-up` | `-$7.27` |
-| `Oracle (within route set)` | `-$7.25` |
+| `Cold-start` | `$7.66` |
+| `Best heuristic (feasible count)` | `$7.54` |
+| `ML warm-up` | `$7.27` |
+| `Oracle (within route set)` | `$7.25` |
 
-The larger isolated single-driver study is retained as controlled secondary evidence. There, the same `10%` / `5-minute` scenario moves from `-$7.40` under cold-start to `-$6.17` under warm-up, with the strongest heuristic at `-$6.28`.
+The larger isolated single-driver study is retained as controlled secondary evidence. There, the same `10%` / `5-minute` scenario moves from `$7.40` loss under cold-start to `$6.17` under warm-up, with the strongest heuristic at `$6.28`.
 
 Important semantic note: `100%` in the retained-sample density sweeps still means the full retained `25%` rider sample used by the artifact, not full city demand.
 
@@ -54,8 +55,8 @@ Important semantic note: `100%` in the retained-sample density sweeps still mean
 
 - Route-aware dispatch beats cold-start in both Yellow and Green under the 5-minute exact-window scenario.
 - In rolling dispatch, the main gain comes from route-aware retrieval versus cold-start; the ML edge over the strongest heuristic is positive but modest.
-- The controlled single-driver study shows a clearer ML-over-heuristic signal, which helps explain why rider exclusivity compresses the learned advantage in dispatch.
-- Exact request-window assumptions matter more than moderate detour changes. In Yellow dispatch at `10%` density, ML warm-up profit is `-$8.07` under a 2-minute window, `-$7.15` under 5 minutes, and `-$5.95` under 10 minutes.
+- Across both dispatch and isolated evaluation, most of the route-aware gain is already recovered by the strongest heuristic, with ML contributing a smaller residual lift.
+- Exact request-window assumptions matter more than moderate detour changes. In Yellow dispatch at `10%` density, ML warm-up scenario profit is `-$8.07` under a 2-minute window, `-$7.15` under 5 minutes, and `-$5.95` under 10 minutes.
 - Temporal holdout model selection uses Jan--Feb 2015 for training and Mar 2015 for validation, reaching `R^2 = 0.801` and `RMSE = $5.85` for tuned LightGBM.
 - These are **scenario profit** values under fixed share/cost assumptions, not calibrated platform margins.
 

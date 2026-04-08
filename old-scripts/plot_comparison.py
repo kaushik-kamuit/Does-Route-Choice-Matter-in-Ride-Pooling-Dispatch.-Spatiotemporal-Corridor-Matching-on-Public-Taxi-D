@@ -12,7 +12,7 @@ Reads results/{coldstart,warmup}_outcomes.csv and produces:
 Also writes results/summary.txt with statistical tests.
 
 Usage:
-    python visualizations/plot_comparison.py
+    python old-scripts/plot_comparison.py
 """
 
 from __future__ import annotations

@@ -56,6 +56,8 @@ The manuscript narrative is anchored to the dispatch-first and realism-first res
 - `../results/paper_primary_summary.csv`
 - `../results/strong_baseline_comparison.csv`
 - `../results/strategy_gap_results.csv`
+- `../results/route_gain_decomposition_summary.csv`
+- `../results/ml_gap_comparison_summary.csv`
 - `../results/model_comparison.csv`
 - `../results/ablation_results.csv`
 - `../results/h3_corridor_sensitivity.csv`

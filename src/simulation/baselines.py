@@ -5,6 +5,7 @@ Strategies:
   - Oracle:                   Runs match_riders on all routes, picks the best actual outcome.
   - Random:                   Picks uniformly among the available routes.
   - Heuristic count:          Highest candidate count inside the corridor.
+  - Heuristic path buffer:    Highest exact-time candidate count inside a simple 1 km path buffer.
   - Heuristic fare density:   Highest corridor fare density among candidates.
   - Heuristic feasible count: Highest feasible-rider count after exact filtering and geometry.
   - Heuristic profit proxy:   Highest hand-crafted profit proxy using route cost and corridor demand.
@@ -26,9 +27,11 @@ from spatial.corridor import Corridor
 from spatial.router import RouteInfo
 
 from .data_types import DriverOutcome, DriverTrip
+from .path_buffer import path_buffer_candidate_count
 
 HEURISTIC_STRATEGIES = [
     "heuristic_count",
+    "heuristic_path_buffer",
     "heuristic_fare_density",
     "heuristic_feasible_count",
     "heuristic_profit_proxy",
@@ -277,6 +280,52 @@ def run_heuristic_count(
         routes=routes,
         corridors=corridors,
         preloaded_candidates=best_candidates,
+    )
+    if outcome is None:
+        return None
+    outcome.compute_time_s = time.perf_counter() - t0
+    return outcome
+
+
+def run_heuristic_path_buffer(
+    driver: DriverTrip,
+    rider_index: RiderIndex,
+    seed: int,
+    candidate_window_bins: int = 1,
+    max_request_offset_min: int | None = None,
+    *,
+    routes: list[RouteInfo],
+    corridors: list[Corridor],
+) -> DriverOutcome | None:
+    """Pick the route with the largest exact-time candidate count in a simple path buffer."""
+    if not routes:
+        return None
+    t0 = time.perf_counter()
+    best_idx = 0
+    best_score = -1
+
+    for idx, route in enumerate(routes):
+        score = path_buffer_candidate_count(
+            rider_index,
+            route.polyline,
+            driver.minute_of_day,
+            max_request_offset_min=max_request_offset_min,
+            query_datetime=driver.departure_time,
+        )
+        if score > best_score:
+            best_idx = idx
+            best_score = score
+
+    outcome = _select_and_match(
+        driver,
+        rider_index,
+        seed,
+        "heuristic_path_buffer",
+        best_idx,
+        candidate_window_bins=candidate_window_bins,
+        max_request_offset_min=max_request_offset_min,
+        routes=routes,
+        corridors=corridors,
     )
     if outcome is None:
         return None

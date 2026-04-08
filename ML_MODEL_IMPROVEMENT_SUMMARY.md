@@ -88,14 +88,15 @@ Extended statistical reporting beyond p-values:
 - `src/simulation/baselines.py` — Oracle, random, heuristic strategy implementations
 - `scripts/ablation_study.py` — Feature group ablation training and evaluation
 - `scripts/run_density_experiments.py` — Batch runner for density experiments + plot generation
-- `visualizations/plot_extended.py` — Extended analysis: baseline comparison, winner/loser histogram, heterogeneity (time-of-day, route choice), density vs advantage, ablation heatmap, enhanced statistics
+- `old-scripts/plot_extended.py` — Extended analysis: baseline comparison, winner/loser histogram, heterogeneity (time-of-day, route choice), density vs advantage, ablation heatmap, enhanced statistics (requires raw outcome CSVs)
 
 ### Updated Files
 - `src/simulation/runner.py` — Multi-strategy, density parameter, strategy output files
 - `src/simulation/data_types.py` — Added `hour` field to DriverOutcome
 - `src/simulation/coldstart.py` — Passes hour through to outcome
 - `src/simulation/warmup.py` — Passes hour through to outcome
-- `visualizations/plot_comparison.py` — Extended palette for multi-strategy support
+- `old-scripts/plot_comparison.py` — Extended palette for multi-strategy support (requires raw outcome CSVs)
+- `visualizations/plot_paper_figures.py` — Manuscript figures from summarized `results/*.csv` into `paper/figures/` and `results/plots/`
 - `README.md` — Updated to v2 results, new sections for ablation and baselines
 
 ### Results Files

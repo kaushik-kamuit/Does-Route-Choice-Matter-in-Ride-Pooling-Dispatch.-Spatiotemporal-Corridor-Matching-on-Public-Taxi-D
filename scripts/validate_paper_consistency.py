@@ -62,6 +62,8 @@ def validate_realism_tables() -> tuple[dict[str, str], dict[str, str], dict[str,
     load_csv(RESULTS / "runtime_profile.csv")
     load_csv(RESULTS / "paper_primary_summary.csv")
     scenario_rows = load_csv(RESULTS / "scenario_assumptions.csv")
+    load_csv(RESULTS / "route_gain_decomposition_summary.csv")
+    load_csv(RESULTS / "ml_gap_comparison_summary.csv")
     require_file(RESULTS / "realism_summary.txt")
 
     observed_primary = {int(row["density_pct"]) for row in primary_rows}
@@ -246,7 +248,7 @@ def validate_paper_package(
         "paper_fig1_dispatch_architecture_v2.png",
         "paper_fig2_matching_ball_mechanism.png",
         "paper_fig3_dispatch_density.png",
-        "paper_fig4_cross_domain.png",
+        # paper_fig4_cross_domain.png removed — data covered by Table tab:domain_transfer
         "paper_fig5_single_driver_mechanism.png",
         "paper_fig6_model_support.png",
         "paper_fig7_sensitivity.png",
@@ -283,14 +285,14 @@ def validate_paper_package(
         "paper_fig1_dispatch_architecture_v2.png",
         "paper_fig2_matching_ball_mechanism.png",
         "paper_fig3_dispatch_density.png",
-        "paper_fig4_cross_domain.png",
+        # paper_fig4_cross_domain.png removed
         "paper_fig5_single_driver_mechanism.png",
         "paper_fig6_model_support.png",
         "paper_fig7_sensitivity.png",
         "fig:dispatch_architecture",
         "fig:matching_ball",
         "fig:dispatch_density",
-        "fig:cross_domain",
+        # fig:cross_domain removed with paper_fig4
         "fig:single_driver_density",
         "fig:model_support",
         "fig:sensitivity",
@@ -304,10 +306,10 @@ def validate_paper_package(
             fail(f"Manuscript is missing expected realism-first snippet: {snippet}")
 
     value_snippets = [
-        f"-\\${fmt_money(abs(float(sparse_row['coldstart_profit'])))}",
-        f"-\\${fmt_money(abs(float(sparse_row['warmup_profit'])))}",
-        f"-\\${fmt_money(abs(float(sparse_row['heuristic_profit'])))}",
-        f"-\\${fmt_money(abs(float(sparse_row['oracle_profit'])))}",
+        f"\\${fmt_money(abs(float(sparse_row['coldstart_profit'])))}",
+        f"\\${fmt_money(abs(float(sparse_row['warmup_profit'])))}",
+        f"\\${fmt_money(abs(float(sparse_row['heuristic_profit'])))}",
+        f"\\${fmt_money(abs(float(sparse_row['oracle_profit'])))}",
         fmt_money(heuristic_gap_row["mean_diff"]),
         fmt_money(heuristic_gap_row["boot_low"]),
         fmt_money(heuristic_gap_row["boot_high"]),
@@ -324,7 +326,7 @@ def validate_paper_package(
     if dispatch_rows is not None:
         for key in ("yellow_coldstart", "yellow_heuristic", "yellow_warmup", "yellow_oracle", "green_coldstart", "green_heuristic", "green_warmup", "green_oracle"):
             row = dispatch_rows[key]
-            value_snippets.append(fmt_money(row["profit_per_launched_driver_mean"]))
+            value_snippets.append(fmt_money(abs(float(row["profit_per_launched_driver_mean"]))))
             value_snippets.append(fmt_money(row["mean_wait_min_mean"]))
         value_snippets.extend([
             f"{float(dispatch_rows['yellow_warmup']['mean_eval_time_s_mean']) * 1000:.1f}",
@@ -340,6 +342,18 @@ def validate_paper_package(
         "santi2014",
         "tachet2017",
         "chen2021",
+        "lin2018fleet",
+        "xu2018dispatch",
+        "tang2019deepvalue",
+        "li2019meanfield",
+        "zhou2019ovdm",
+        "jin2019coride",
+        "xu2020reposition",
+        "cheng2019queueing",
+        "tang2021value",
+        "suhr2019fair",
+        "shi2021fair",
+        "raman2021fair",
         "stumpe2024",
         "zhou2026",
         "ke2017",
@@ -352,6 +366,7 @@ def validate_paper_package(
             f"@article{{{key}" not in references
             and f"@misc{{{key}" not in references
             and f"@inproceedings{{{key}" not in references
+            and f"@incollection{{{key}" not in references
         ):
             fail(f"Bibliography key missing from references.bib: {key}")
 

@@ -10,7 +10,7 @@ Generates:
   6. Ablation heatmap (if ablation results exist)
 
 Usage:
-    python visualizations/plot_extended.py
+    python old-scripts/plot_extended.py
 """
 
 from __future__ import annotations

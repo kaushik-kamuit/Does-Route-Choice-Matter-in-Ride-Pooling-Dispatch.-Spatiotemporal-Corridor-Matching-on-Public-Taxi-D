@@ -249,3 +249,8 @@ class RiderIndex:
     @property
     def n_dropoff_cells(self) -> int:
         return len(self._dropoff_idx)
+
+    @property
+    def riders(self) -> pd.DataFrame:
+        """Expose the underlying rider frame for alternative retrieval baselines."""
+        return self._riders

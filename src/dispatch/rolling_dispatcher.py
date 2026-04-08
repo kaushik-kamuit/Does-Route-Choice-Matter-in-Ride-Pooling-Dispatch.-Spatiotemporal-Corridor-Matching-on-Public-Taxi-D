@@ -20,6 +20,7 @@ ALL_POLICIES = [
     "coldstart",
     "random",
     "heuristic_count",
+    "heuristic_path_buffer",
     "heuristic_fare_density",
     "heuristic_feasible_count",
     "heuristic_profit_proxy",

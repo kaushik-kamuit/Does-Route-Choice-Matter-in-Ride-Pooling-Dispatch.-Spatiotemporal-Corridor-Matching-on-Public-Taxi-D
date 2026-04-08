@@ -54,6 +54,25 @@ def load_raw(config, month: int) -> pd.DataFrame:
     return df.rename(columns=config.column_renames)
 
 
+def filter_partition_month(df: pd.DataFrame, month: int) -> pd.DataFrame:
+    """Keep only rows whose pickup timestamp belongs to the requested month window.
+
+    Some public TLC partition folders contain a small number of spillover rows with
+    pickup timestamps from other months. Filtering here keeps the temporal split
+    deterministic and prevents those rows from contaminating train/test labels.
+    """
+    mask = (
+        (df["pickup_datetime"].dt.year == YEAR)
+        & (df["pickup_datetime"].dt.month == month)
+    )
+    if bool(mask.all()):
+        return df
+    filtered = df.loc[mask].copy()
+    removed = len(df) - len(filtered)
+    print(f"    Month filter: {len(df):,} -> {len(filtered):,} (removed {removed:,} spillover rows)")
+    return filtered
+
+
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     """Apply quality filters to remove invalid/outlier rows."""
     n_before = len(df)
@@ -135,6 +154,7 @@ def process_month(config, month: int, *, train_months: set[int], test_months: se
     df = load_raw(config, month)
     print(f"    Raw rows: {len(df):,}")
 
+    df = filter_partition_month(df, month)
     df = clean(df)
     df = add_temporal_features(df)
     df = add_h3_cells(df)

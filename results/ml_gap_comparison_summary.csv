@@ -1,0 +1,4 @@
+density_pct,dispatch_gap_mean,dispatch_gap_low,dispatch_gap_high,selected_dispatch_heuristic_policy,single_driver_gap_mean,single_driver_gap_low,single_driver_gap_high,dispatch_to_single_driver_ratio
+10,0.14999999999999947,0.14999999999999947,0.14999999999999947,heuristic_feasible_count,0.11475,0.07,0.16,1.3071895424836555
+25,0.14999999999999947,0.14999999999999947,0.14999999999999947,heuristic_feasible_count,0.104067,0.05,0.16,1.4413791115339105
+100,0.11000000000000004,0.11000000000000004,0.11000000000000004,heuristic_feasible_count,0.149338,0.09,0.21,0.7365841246032493

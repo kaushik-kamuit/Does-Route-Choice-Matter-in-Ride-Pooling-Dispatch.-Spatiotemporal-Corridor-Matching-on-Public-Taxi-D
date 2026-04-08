@@ -9,7 +9,7 @@ Uses GroupShuffleSplit by driver_id to match the training script's split,
 ensuring evaluation is on truly unseen drivers.
 
 Usage:
-    python visualizations/plot_model.py
+    python old-scripts/plot_model.py
 """
 
 from __future__ import annotations

@@ -13,7 +13,8 @@
 2. Train model: `python src/models/train_profit_model.py`
 3. Run density experiments: `python scripts/run_density_experiments.py --sample 5000` (or 10000)
    - Produces `results/{strategy}_outcomes.csv` (100%) and `results/{strategy}_outcomes_d75.csv`, `_d50.csv`, `_d25.csv`, `_d10.csv`
-4. Plots and stats: `python visualizations/plot_comparison.py`, `python visualizations/plot_extended.py`, `python visualizations/plot_model.py`
+4. Plots and stats (require `results/*_outcomes*.csv`): `python old-scripts/plot_comparison.py`, `python old-scripts/plot_extended.py`, `python old-scripts/plot_model.py`
+5. Paper figures from summarized CSVs: `python visualizations/plot_paper_figures.py` → `paper/figures/paper_fig*.png` (and `results/plots/`)
 
 **Paper narrative:**
 - Warm-up beats cold-start in mean profit at all densities.
@@ -29,4 +30,4 @@
 **After the 50K dataset build completes:**
 1. Retrain: `python src/models/train_profit_model.py`
 2. Run density experiments: `python scripts/run_density_experiments.py --sample 5000` (or `--sample 10000`)
-3. Regenerate: `python visualizations/plot_comparison.py`, `python visualizations/plot_extended.py`, `python visualizations/plot_model.py`
+3. Regenerate exploratory plots: `python old-scripts/plot_comparison.py`, `python old-scripts/plot_extended.py`, `python old-scripts/plot_model.py`; manuscript figures: `python visualizations/plot_paper_figures.py`

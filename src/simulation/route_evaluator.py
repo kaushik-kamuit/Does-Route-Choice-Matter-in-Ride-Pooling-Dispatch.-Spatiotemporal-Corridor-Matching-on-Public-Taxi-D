@@ -10,6 +10,7 @@ from matching.rider_index import RiderIndex
 from models.predict import ProfitPredictor
 from simulation.baselines import _proxy_profit_score
 from simulation.data_types import DriverOutcome, DriverTrip
+from simulation.path_buffer import path_buffer_candidate_count
 from simulation.warmup import _route_features
 from spatial.corridor import Corridor, build_corridor
 from spatial.router import RouteInfo
@@ -36,6 +37,7 @@ class RouteEvaluation:
     exact_time_candidate_count: int
     candidate_count: int
     feasible_count: int
+    path_buffer_count: int
     fare_density: float
     proxy_profit: float
     predicted_profit: float
@@ -201,6 +203,14 @@ def evaluate_driver_policies(
                 retrieved_candidate_count=lookup_stats.corridor_joint_candidates,
                 exact_time_candidate_count=lookup_stats.exact_time_eligible,
                 feasible_count=len(feasible),
+                path_buffer_count=path_buffer_candidate_count(
+                    rider_index,
+                    route.polyline,
+                    driver.minute_of_day,
+                    max_request_offset_min=max_request_offset_min,
+                    query_datetime=driver.departure_time,
+                    available_rider_ids=available_rider_ids,
+                ),
                 fare_density=fare_density,
                 proxy_profit=proxy_profit,
                 predicted_profit=0.0,
@@ -253,6 +263,7 @@ def evaluate_driver_policies(
     random_idx = int(rng.integers(0, len(route_evals)))
     oracle_idx = max(route_evals, key=lambda row: row.actual_profit).route_idx
     heuristic_count_idx = _deterministic_max(route_evals, lambda row: row.candidate_count)
+    heuristic_path_buffer_idx = _deterministic_max(route_evals, lambda row: row.path_buffer_count)
     heuristic_fare_idx = _deterministic_max(route_evals, lambda row: row.fare_density)
     heuristic_feasible_idx = _deterministic_max(route_evals, lambda row: row.feasible_count)
     heuristic_proxy_idx = _deterministic_max(route_evals, lambda row: row.proxy_profit)
@@ -265,6 +276,11 @@ def evaluate_driver_policies(
             "heuristic_count",
             heuristic_count_idx,
             float(route_eval_map[heuristic_count_idx].candidate_count),
+        ),
+        "heuristic_path_buffer": _plan(
+            "heuristic_path_buffer",
+            heuristic_path_buffer_idx,
+            float(route_eval_map[heuristic_path_buffer_idx].path_buffer_count),
         ),
         "heuristic_fare_density": _plan(
             "heuristic_fare_density",

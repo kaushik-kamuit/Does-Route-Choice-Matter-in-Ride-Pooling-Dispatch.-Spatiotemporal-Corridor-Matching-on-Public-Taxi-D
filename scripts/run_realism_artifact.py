@@ -206,10 +206,10 @@ def run_detour_sensitivity(py: str, sample: int | None, seeds: int, model_path: 
 
 
 def regenerate_publication_outputs(py: str) -> None:
-    _run([py, "visualizations/plot_comparison.py"], "Phase 4A: Comparison plots")
+    _run([py, "old-scripts/plot_comparison.py"], "Phase 4A: Comparison plots")
     _run([py, "scripts/summarize_realism_results.py"], "Phase 4B: Realism scenario summaries")
     _run([py, "scripts/analyze_strategy_gaps.py"], "Phase 4C: Paired strategy gap analysis")
-    _run([py, "visualizations/plot_extended.py"], "Phase 4D: Extended analysis plots")
+    _run([py, "old-scripts/plot_extended.py"], "Phase 4D: Extended analysis plots")
     _run([py, "visualizations/plot_paper_figures.py"], "Phase 4E: Paper figure generation")
     _run([py, "scripts/validate_paper_consistency.py"], "Phase 4F: Artifact consistency validation")
 

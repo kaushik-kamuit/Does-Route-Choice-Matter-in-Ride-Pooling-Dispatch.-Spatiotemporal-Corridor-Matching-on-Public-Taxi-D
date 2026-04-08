@@ -60,9 +60,9 @@ def main():
     print("  Generating plots and statistics...")
     print("="*60)
 
-    run([py, str(ROOT / "visualizations" / "plot_comparison.py")],
+    run([py, str(ROOT / "old-scripts" / "plot_comparison.py")],
         "Basic comparison plots")
-    run([py, str(ROOT / "visualizations" / "plot_extended.py")],
+    run([py, str(ROOT / "old-scripts" / "plot_extended.py")],
         "Extended analysis plots")
 
     print("\n  All experiments complete!")

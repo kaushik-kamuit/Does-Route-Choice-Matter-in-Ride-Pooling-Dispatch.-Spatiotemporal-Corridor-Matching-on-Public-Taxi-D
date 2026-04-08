@@ -53,6 +53,8 @@ results/plots/*.png
 !results/scenario_assumptions.csv
 !results/strategy_gap_results.csv
 !results/strategy_gap_route_breakdown.csv
+!results/route_gain_decomposition_summary.csv
+!results/ml_gap_comparison_summary.csv
 !results/model_comparison.csv
 !results/ablation_results.csv
 !results/dispatch_primary_ci_summary.csv

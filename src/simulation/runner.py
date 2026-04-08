@@ -52,6 +52,7 @@ from simulation.warmup import run_warmup, _route_features
 from simulation.baselines import (
     HEURISTIC_STRATEGIES,
     run_heuristic_count,
+    run_heuristic_path_buffer,
     run_heuristic_fare_density,
     run_heuristic_feasible_count,
     run_heuristic_profit_proxy,
@@ -318,6 +319,12 @@ def main() -> None:
                     max_request_offset_min=exp_config.max_request_offset_min,
                     routes=routes, corridors=corridors,
                 )
+                heu_path = run_heuristic_path_buffer(
+                    driver, rider_index, seed=seed,
+                    candidate_window_bins=exp_config.candidate_window_bins,
+                    max_request_offset_min=exp_config.max_request_offset_min,
+                    routes=routes, corridors=corridors,
+                )
                 heu_feasible = run_heuristic_feasible_count(
                     driver, rider_index, seed=seed,
                     candidate_window_bins=exp_config.candidate_window_bins,
@@ -335,6 +342,7 @@ def main() -> None:
                     "coldstart": cs,
                     "random": rnd,
                     "heuristic_count": heu_count,
+                    "heuristic_path_buffer": heu_path,
                     "heuristic_fare_density": heu_fare,
                     "heuristic_feasible_count": heu_feasible,
                     "heuristic_profit_proxy": heu_proxy,
