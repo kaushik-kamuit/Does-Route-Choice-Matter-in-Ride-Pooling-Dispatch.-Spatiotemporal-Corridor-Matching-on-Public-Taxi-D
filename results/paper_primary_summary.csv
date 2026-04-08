@@ -1,2 +1,0 @@
-density_pct,rider_pool_semantics,matching_window_min,index_bin_minutes,candidate_window_bins,max_detour_min,heuristic_selected_strategy,coldstart_profit,warmup_profit,heuristic_profit,oracle_profit,warmup_delta,warmup_gain_pct,warmup_vs_heuristic
-10,retained_25pct_sample,5,15,1,4,heuristic_feasible_count,-7.4,-6.17,-6.28,-5.95,1.2300000000000004,16.621621621621628,0.11000000000000032

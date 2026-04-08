@@ -1,6 +1,0 @@
-density_pct,rider_pool_semantics,matching_window_min,index_bin_minutes,candidate_window_bins,max_detour_min,heuristic_selected_strategy,coldstart_profit,warmup_profit,heuristic_profit,oracle_profit,warmup_delta,warmup_gain_pct,warmup_vs_heuristic
-100,retained_25pct_sample,5,15,1,4,heuristic_feasible_count,-0.8,0.2,0.05,0.45,1.0,125.0,0.15000000000000002
-75,retained_25pct_sample,5,15,1,4,heuristic_feasible_count,-2.1,-0.7,-0.85,-0.42,1.4000000000000001,66.66666666666666,0.15000000000000002
-50,retained_25pct_sample,5,15,1,4,heuristic_feasible_count,-3.55,-1.6,-1.73,-1.22,1.9499999999999997,54.92957746478873,0.1299999999999999
-25,retained_25pct_sample,5,15,1,4,heuristic_feasible_count,-5.26,-3.42,-3.53,-3.08,1.8399999999999999,34.98098859315589,0.10999999999999988
-10,retained_25pct_sample,5,15,1,4,heuristic_feasible_count,-7.4,-6.17,-6.28,-5.95,1.2300000000000004,16.621621621621628,0.11000000000000032

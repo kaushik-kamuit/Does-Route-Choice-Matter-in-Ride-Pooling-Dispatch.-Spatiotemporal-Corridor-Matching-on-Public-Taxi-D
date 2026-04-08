@@ -1,6 +1,0 @@
-model,r2,rmse,rank_acc,mae
-Ridge (linear),0.692,6.92,0.681,4.81
-LightGBM (baseline),0.786,6.02,0.742,4.01
-LightGBM (tuned),0.8012,5.85,0.7609,3.92
-MLP (Neural Net),0.804,5.81,0.748,3.9
-LambdaRank,0.611,7.9,0.805,5.43

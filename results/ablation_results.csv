@@ -1,4 +1,0 @@
-experiment,r2,rmse
-All features,0.8012,5.85
-All minus Temporal,0.793,5.97
-All minus Spatial Demand,0.721,6.89
