@@ -9,6 +9,7 @@ import pandas as pd
 def summarize_driver_outcomes(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = _normalize_grouping_columns(df)
     keys = _group_keys(df)
     return (
         df.groupby(keys, as_index=False)
@@ -33,6 +34,7 @@ def summarize_driver_outcomes(df: pd.DataFrame) -> pd.DataFrame:
 def summarize_dispatch(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = _normalize_grouping_columns(df)
     keys = _group_keys(df)
     return (
         df.groupby(keys, as_index=False)
@@ -62,6 +64,7 @@ def bootstrap_mean_intervals(
 ) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = _normalize_grouping_columns(df)
     keys = _group_keys(df)
     rng = np.random.default_rng(seed)
     rows: list[dict[str, object]] = []
@@ -104,6 +107,7 @@ def paired_policy_deltas(
 ) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
+    df = _normalize_grouping_columns(df)
     keys = [key for key in _group_keys(df) if key != "policy"]
     group_cols = keys + unit_cols + ["policy"]
     reduced = (
@@ -155,7 +159,11 @@ def paired_policy_deltas(
                 "ci_low": float(np.quantile(draws, 0.025)),
                 "ci_high": float(np.quantile(draws, 0.975)),
                 "share_positive": float(np.mean(deltas > 0.0)),
+                "share_zero": float(np.mean(np.isclose(deltas, 0.0))),
+                "share_negative": float(np.mean(deltas < 0.0)),
                 "share_nonnegative": float(np.mean(deltas >= 0.0)),
+                "mean_abs_delta": float(np.mean(np.abs(deltas))),
+                "effect_size": float(deltas.mean() / max(np.std(deltas, ddof=1), 1e-9)) if len(deltas) > 1 else np.nan,
             }
         )
         summary_rows.append(record)
@@ -206,6 +214,7 @@ def _group_keys(df: pd.DataFrame) -> list[str]:
         "domain",
         "scenario_name",
         "time_slice",
+        "area_slice",
         "rider_density_pct",
         "occlusion_lambda",
         "meeting_k_ring",
@@ -215,3 +224,19 @@ def _group_keys(df: pd.DataFrame) -> list[str]:
         "walk_penalty_per_min",
     ]
     return [column for column in preferred if column in df.columns]
+
+
+def _normalize_grouping_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df.copy()
+    defaults: dict[str, object] = {
+        "time_slice": "all_day",
+        "area_slice": "all",
+        "observability_profile": "equal",
+        "observability_ablation": "full",
+        "use_urban_context": True,
+        "walk_penalty_per_min": 0.5,
+    }
+    for column, default in defaults.items():
+        if column in normalized.columns:
+            normalized[column] = normalized[column].fillna(default)
+    return normalized

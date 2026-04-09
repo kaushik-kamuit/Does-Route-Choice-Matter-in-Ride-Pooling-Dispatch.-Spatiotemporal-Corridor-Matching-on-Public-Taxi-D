@@ -8,6 +8,7 @@ class RendezvousConfig:
     scenario_name: str = "primary"
     domain: str = "yellow"
     time_slice: str = "all_day"
+    area_slice: str = "all"
     hour_start: int | None = None
     hour_end: int | None = None
     route_alternatives: int = 3

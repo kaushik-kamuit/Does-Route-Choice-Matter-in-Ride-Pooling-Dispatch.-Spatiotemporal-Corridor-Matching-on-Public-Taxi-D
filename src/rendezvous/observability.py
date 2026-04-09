@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import warnings
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class ObservabilityWeights:
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WEIGHTS = ObservabilityWeights()
+_WARNED_FALLBACK_DOMAINS: set[str] = set()
 
 
 def weights_for_mode(mode: str, base_weights: ObservabilityWeights | None = None) -> ObservabilityWeights:
@@ -68,7 +70,19 @@ def weights_for_profile(profile: str, *, domain: str) -> ObservabilityWeights:
 def _load_calibrated_weights(domain: str) -> ObservabilityWeights:
     path = ROOT / "models" / f"observability_weights_{domain}.json"
     if not path.exists():
-        raise FileNotFoundError(f"Calibrated observability weights not found: {path}")
+        fallback = ROOT / "models" / "observability_weights_yellow.json"
+        if domain != "yellow" and fallback.exists():
+            if domain not in _WARNED_FALLBACK_DOMAINS:
+                warnings.warn(
+                    f"Calibrated observability weights not found for domain '{domain}'. "
+                    f"Falling back to Yellow-calibrated weights at {fallback}.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                _WARNED_FALLBACK_DOMAINS.add(domain)
+            path = fallback
+        else:
+            raise FileNotFoundError(f"Calibrated observability weights not found: {path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
     return ObservabilityWeights(
         straightness=float(payload["weights"]["straightness"]),

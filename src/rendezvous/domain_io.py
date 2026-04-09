@@ -50,6 +50,46 @@ def build_driver_trips(df: pd.DataFrame, config: RendezvousConfig) -> list[Drive
     return trips
 
 
+def apply_area_slice(
+    drivers_df: pd.DataFrame,
+    riders_df: pd.DataFrame,
+    urban_context: UrbanContextIndex,
+    *,
+    area_slice: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    key = (area_slice or "all").strip().lower()
+    if key == "all" or not urban_context:
+        return drivers_df.reset_index(drop=True), riders_df.reset_index(drop=True)
+    if key not in {"dense_core", "open_grid"}:
+        raise ValueError(f"Unsupported area slice '{area_slice}'. Expected one of: all, dense_core, open_grid")
+
+    if "origin_h3" not in drivers_df.columns or "pickup_h3" not in riders_df.columns:
+        raise ValueError("Area slicing requires origin_h3 on drivers and pickup_h3 on riders.")
+
+    def _score(cell: object) -> float:
+        features = urban_context.lookup(str(cell))
+        return float(features.urban_clutter_index + features.building_height_proxy)
+
+    driver_scores = drivers_df["origin_h3"].map(_score)
+    rider_scores = riders_df["pickup_h3"].map(_score)
+    combined = pd.concat([driver_scores, rider_scores], ignore_index=True)
+    if combined.empty:
+        return drivers_df.reset_index(drop=True), riders_df.reset_index(drop=True)
+
+    lower = float(combined.quantile(0.25))
+    upper = float(combined.quantile(0.75))
+    if key == "dense_core":
+        driver_mask = driver_scores >= upper
+        rider_mask = rider_scores >= upper
+    else:
+        driver_mask = driver_scores <= lower
+        rider_mask = rider_scores <= lower
+    return (
+        drivers_df.loc[driver_mask].reset_index(drop=True),
+        riders_df.loc[rider_mask].reset_index(drop=True),
+    )
+
+
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path

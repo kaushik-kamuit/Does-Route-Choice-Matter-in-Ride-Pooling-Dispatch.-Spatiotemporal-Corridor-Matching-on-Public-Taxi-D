@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from rendezvous import ALL_POLICIES, MLMeetingPointSelector, RendezvousConfig, RendezvousDispatcher
-from rendezvous.domain_io import load_domain_assets, load_urban_context_index
+from rendezvous.domain_io import apply_area_slice, load_domain_assets, load_urban_context_index
 from rendezvous.reporting import summarize_dispatch
 from spatial.router import OSRMRouter
 
@@ -28,6 +28,8 @@ DRIVER_COLUMNS = [
     "dest_lng",
     "hour_of_day",
     "trip_distance_miles",
+    "origin_h3",
+    "dest_h3",
 ]
 
 RIDER_COLUMNS = [
@@ -50,6 +52,7 @@ def main() -> None:
     parser.add_argument("--sample", type=int, default=500)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--time-slice", type=str, default="all_day")
+    parser.add_argument("--area-slice", type=str, default="all", choices=["all", "dense_core", "open_grid"])
     parser.add_argument("--hour-start", type=int, default=None)
     parser.add_argument("--hour-end", type=int, default=None)
     parser.add_argument("--density", type=int, default=10)
@@ -80,6 +83,7 @@ def main() -> None:
         scenario_name=args.scenario_name,
         domain=args.domain,
         time_slice=args.time_slice,
+        area_slice=args.area_slice,
         hour_start=args.hour_start,
         hour_end=args.hour_end,
         rider_density_pct=args.density,
@@ -100,14 +104,14 @@ def main() -> None:
     if args.hour_start is not None and args.hour_end is not None:
         drivers_df = _filter_by_hour_range(drivers_df, args.hour_start, args.hour_end)
         riders_df = _filter_by_hour_range(riders_df, args.hour_start, args.hour_end)
-    if args.sample < len(drivers_df):
-        drivers_df = drivers_df.sample(n=args.sample, random_state=42).reset_index(drop=True)
-
     ml_selector = None
     if args.model_path:
         ml_selector = MLMeetingPointSelector.load(Path(args.model_path))
     router = OSRMRouter(cache_path=domain_config.route_cache_path, cache_only=not args.fetch)
     urban_context = load_urban_context_index(domain_config, config)
+    drivers_df, riders_df = apply_area_slice(drivers_df, riders_df, urban_context, area_slice=config.area_slice)
+    if args.sample < len(drivers_df):
+        drivers_df = drivers_df.sample(n=args.sample, random_state=42).reset_index(drop=True)
     dispatcher = RendezvousDispatcher(config, router=router, ml_selector=ml_selector, urban_context=urban_context)
     sampled_riders_df, rider_index, request_states, request_batches = dispatcher.prepare_rider_pool(riders_df)
 
@@ -133,6 +137,7 @@ def main() -> None:
                         "domain": args.domain,
                         "scenario_name": config.scenario_name,
                         "time_slice": config.time_slice,
+                        "area_slice": config.area_slice,
                         "hour_start": config.hour_start,
                         "hour_end": config.hour_end,
                         "rider_density_pct": config.rider_density_pct,
@@ -152,6 +157,7 @@ def main() -> None:
                     "domain": args.domain,
                     "scenario_name": config.scenario_name,
                     "time_slice": config.time_slice,
+                    "area_slice": config.area_slice,
                     "hour_start": config.hour_start,
                     "hour_end": config.hour_end,
                     "rider_density_pct": config.rider_density_pct,
@@ -186,6 +192,7 @@ def main() -> None:
         "requested_drivers": int(summaries_df["requested_drivers"].max()) if not summaries_df.empty else 0,
         "mean_route_coverage_rate": float(summaries_df["route_coverage_rate"].mean()) if not summaries_df.empty else 0.0,
         "mean_drivers_skipped_no_route": float(summaries_df["drivers_skipped_no_route"].mean()) if not summaries_df.empty else 0.0,
+        "area_slice": config.area_slice,
         "seeds": args.seeds,
         "cache_only": not args.fetch,
         "model_path": args.model_path,

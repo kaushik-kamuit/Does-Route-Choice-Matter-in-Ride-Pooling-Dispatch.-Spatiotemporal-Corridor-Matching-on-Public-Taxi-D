@@ -129,6 +129,8 @@ class PolicyOutcome:
             "mean_observability": self.mean_observability,
             "mean_walk_min": self.mean_walk_min,
             "nominal_realized_gap": self.nominal_realized_gap,
+            "selected_rider_ids": ";".join(str(rider_id) for rider_id in self.selected_rider_ids),
+            "successful_rider_ids": ";".join(str(rider_id) for rider_id in self.successful_rider_ids),
         }
 
 

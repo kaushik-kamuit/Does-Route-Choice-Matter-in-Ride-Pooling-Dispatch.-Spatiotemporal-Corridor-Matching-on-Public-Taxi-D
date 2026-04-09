@@ -1,35 +1,17 @@
 # Evidence Summary
 
-This note summarizes the current evidence on branch `codex/rendezvous-aware-route-choice-under-occlusion` after the calibration and robustness pass.
+This note summarizes the current Q1-push evidence on branch `rendezvous-aware-route-choice-under-occlusion`.
 
-## What Changed In This Pass
+## Current Headline
 
-Two Q1-oriented upgrades were added on top of the repaired pipeline:
+- `corridor_only` is decisively the weakest primitive.
+- The main gain comes from moving from corridor exposure to feasible rendezvous opportunities.
+- The observability layer is most convincing in the Yellow hard regime, especially once we isolate matched route pairs.
+- Green transfer supports the feasible-rendezvous framing, but it does **not** support a universal observability-dominance claim.
 
-- a non-test observability calibration pass using a larger Yellow meeting-point dataset (`19,798` rows split into train/valid/test)
-- a time-slice robustness layer in the headline `sparse_high_occlusion` regime
+## Yellow Primary
 
-The calibrated weight profile saved in [observability_weights_yellow.json](K:\Kamuit\Uber_Logic\Research_paper_2\models\observability_weights_yellow.json) is:
-
-- straightness: `0.20`
-- turn: `0.30`
-- ambiguity: `0.30`
-- clutter: `0.20`
-
-Calibration helps only modestly. The test Brier score improves from `0.13636` to `0.13634` and test ROC AUC improves from `0.5348` to `0.5403`, while validation AUC is slightly worse. So the calibrated profile is useful mainly because it is less heuristic and more disciplined, not because it produces a dramatic standalone lift.
-
-## Main Takeaways
-
-- `corridor_only` is still decisively weakest.
-- The main gain continues to come from feasible rendezvous valuation.
-- `rendezvous_observable` is the strongest deterministic policy in the paper's headline `sparse_high_occlusion` regime.
-- That observability gain is still modest relative to `rendezvous_only`, so the correct headline remains regime-dependent rather than universal.
-- Turning off urban context reduces hard-regime performance for the rendezvous-aware methods.
-- The hard-regime ordering survives a time-slice robustness check: morning peak is harder than all-day, but observability-aware valuation still helps most there.
-
-## Single-Driver Results
-
-### Primary (`density=100`, `occlusion_lambda=0.25`, calibrated, all day)
+Default calibrated all-day results from [rendezvous_policy_summary.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_policy_summary.csv):
 
 - `corridor_only`: `6.76`
 - `time_only_baseline`: `16.03`
@@ -37,167 +19,192 @@ Calibration helps only modestly. The test Brier score improves from `0.13636` to
 - `walk_aware_rendezvous`: `17.30`
 - `rendezvous_only`: `17.60`
 - `rendezvous_observable`: `17.57`
-- `ml_meeting_point_comparator`: `17.77`
-
-Bootstrap 95% intervals from [rendezvous_policy_bootstrap_ci.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_policy_bootstrap_ci.csv):
-
-- `corridor_only`: `[6.11, 7.45]`
-- `rendezvous_only`: `[17.00, 18.22]`
-- `rendezvous_observable`: `[16.96, 18.22]`
 
 Interpretation:
 
-- the stronger baselines keep the paper honest
-- rendezvous-aware valuation remains much better than route exposure alone
-- in the easier primary regime, `rendezvous_only` still edges `rendezvous_observable`
+- the paper still should not oversell observability in the easy regime
+- the important point is that feasible rendezvous valuation is far stronger than corridor exposure
 
-### Sparse High Occlusion (`density=25`, `occlusion_lambda=0.40`, calibrated, all day)
+## Yellow Hard Regime
 
-- `corridor_only`: `0.59`
-- `time_only_baseline`: `4.08`
-- `feasible_count_baseline`: `5.20`
-- `walk_aware_rendezvous`: `5.40`
-- `rendezvous_only`: `5.52`
-- `rendezvous_observable`: `5.72`
-- `ml_meeting_point_comparator`: `5.80`
+Default calibrated `sparse_high_occlusion` results:
 
-Bootstrap 95% intervals:
+### All day
 
-- `corridor_only`: `[0.11, 1.06]`
-- `rendezvous_only`: `[5.01, 6.07]`
-- `rendezvous_observable`: `[5.24, 6.26]`
-- `feasible_count_baseline`: `[4.69, 5.72]`
-- `walk_aware_rendezvous`: `[4.87, 6.00]`
+- `corridor_only`: `-3.39`
+- `time_only_baseline`: `-1.64`
+- `feasible_count_baseline`: `-1.01`
+- `walk_aware_rendezvous`: `-0.79`
+- `rendezvous_only`: `-0.70`
+- `rendezvous_observable`: `-0.68`
 
-Paired deltas versus `corridor_only` from [rendezvous_pairwise_deltas_vs_corridor.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_pairwise_deltas_vs_corridor.csv):
+### Morning peak
 
-- `time_only_baseline`: `+3.49`
-- `feasible_count_baseline`: `+4.61`
-- `walk_aware_rendezvous`: `+4.81`
-- `rendezvous_only`: `+4.93`
-- `rendezvous_observable`: `+5.13`
-
-Paired delta versus `rendezvous_only` from [rendezvous_pairwise_deltas_vs_rendezvous_only.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_pairwise_deltas_vs_rendezvous_only.csv):
-
-- `rendezvous_observable`: `+0.20`
-- bootstrap 95% interval: `[-0.15, 0.54]`
+- `corridor_only`: `-4.57`
+- `time_only_baseline`: `-2.51`
+- `feasible_count_baseline`: `-2.25`
+- `walk_aware_rendezvous`: `-2.11`
+- `rendezvous_only`: `-1.96`
+- `rendezvous_observable`: `-1.66`
 
 Interpretation:
 
-- this remains the cleanest regime for the paper's full claim
-- `rendezvous_observable` is the strongest deterministic policy
-- the gain over `rendezvous_only` is positive but still modest
+- absolute profit is negative because this regime is intentionally hard
+- the route-ordering signal is still strong and consistent:
+  - `rendezvous_observable > rendezvous_only > corridor_only`
 
-## Time-Slice Robustness
+## Pairwise Policy Evidence
 
-The additional robustness layer keeps the same hard regime but changes the temporal slice.
+From [rendezvous_pairwise_deltas_vs_corridor.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_pairwise_deltas_vs_corridor.csv):
 
-### Sparse High Occlusion, Morning Peak (`07:00-10:00`)
+### Yellow sparse high occlusion, all day
 
-- `corridor_only`: `-1.65`
-- `time_only_baseline`: `2.89`
-- `feasible_count_baseline`: `3.60`
-- `walk_aware_rendezvous`: `3.41`
-- `rendezvous_only`: `3.76`
-- `rendezvous_observable`: `4.10`
-- `ml_meeting_point_comparator`: `3.54`
+- `rendezvous_observable - corridor_only`: `+2.71`
+- 95% CI: `[2.43, 3.00]`
 
-Interpretation:
+### Yellow sparse high occlusion, morning peak
 
-- morning peak is harsher than the all-day slice
-- the observability-aware deterministic policy is still best in this harder time window
+- `rendezvous_observable - corridor_only`: `+2.91`
+- 95% CI: `[2.40, 3.44]`
 
-### Sparse High Occlusion, Evening Peak (`16:00-19:00`)
+From [rendezvous_pairwise_deltas_vs_rendezvous_only.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_pairwise_deltas_vs_rendezvous_only.csv):
 
-- `corridor_only`: `1.35`
-- `time_only_baseline`: `5.65`
-- `feasible_count_baseline`: `7.04`
-- `walk_aware_rendezvous`: `7.12`
-- `rendezvous_only`: `7.62`
-- `rendezvous_observable`: `7.60`
-- `ml_meeting_point_comparator`: `7.13`
+### Yellow sparse high occlusion, all day
+
+- `rendezvous_observable - rendezvous_only`: `+0.025`
+- 95% CI: `[-0.22, 0.26]`
+
+### Yellow sparse high occlusion, morning peak
+
+- `rendezvous_observable - rendezvous_only`: `+0.30`
+- 95% CI: `[-0.17, 0.78]`
 
 Interpretation:
 
-- evening peak is easier than morning peak
-- the rendezvous-aware ordering still holds
-- the observability benefit narrows, which fits the paper's regime-dependent framing
+- aggregate policy bars show a clear gain over corridor-only
+- aggregate gains over `rendezvous_only` are positive but still modest
+- that is why the matched-pair analysis matters
 
-## Dispatch Results
+## Matched Observability Isolation
 
-### Primary Dispatch (calibrated, all day)
+From [rendezvous_observability_matched_summary.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_observability_matched_summary.csv):
+
+### Yellow sparse high occlusion, all day
+
+- matched higher-observability route minus lower-observability route: `+5.28`
+- 95% CI: `[4.21, 6.37]`
+- higher-observability win rate: `0.675`
+
+### Yellow sparse high occlusion, morning peak
+
+- matched higher-observability route minus lower-observability route: `+0.89`
+- 95% CI: `[0.06, 1.71]`
+- higher-observability win rate: `0.585`
+
+Interpretation:
+
+- this is the strongest direct evidence for the observability claim
+- once corridor exposure and feasible opportunity count are approximately matched, observability still changes realized value
+
+## Dispatch
+
+From [rendezvous_dispatch_policy_summary.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_dispatch_policy_summary.csv):
+
+### Yellow primary dispatch
 
 - `corridor_only`: `3.87`
-- `time_only_baseline`: `10.51`
-- `feasible_count_baseline`: `11.53`
-- `walk_aware_rendezvous`: `11.81`
 - `rendezvous_only`: `12.10`
 - `rendezvous_observable`: `12.19`
-- `ml_meeting_point_comparator`: `12.29`
 
-### Sparse High Occlusion Dispatch (calibrated, all day)
+### Yellow sparse high occlusion dispatch, all day
 
 - `corridor_only`: `-2.67`
-- `time_only_baseline`: `-0.97`
-- `feasible_count_baseline`: `0.37`
-- `walk_aware_rendezvous`: `0.41`
 - `rendezvous_only`: `0.57`
 - `rendezvous_observable`: `0.57`
-- `ml_meeting_point_comparator`: `0.47`
 
-### Sparse High Occlusion Dispatch, Morning Peak
+### Yellow sparse high occlusion dispatch, morning peak
 
 - `corridor_only`: `-4.85`
-- `time_only_baseline`: `-3.29`
-- `feasible_count_baseline`: `-2.84`
-- `walk_aware_rendezvous`: `-2.35`
 - `rendezvous_only`: `-2.53`
 - `rendezvous_observable`: `-2.08`
-- `ml_meeting_point_comparator`: `-2.79`
 
 Interpretation:
 
-- the systems story survives the robustness pass
-- in the morning hard regime, observability-aware valuation again provides the strongest deterministic result
+- the systems story survives shared competition
+- morning peak remains the cleaner dispatch slice for the observability story
 
 ## Urban-Context Ablation
 
-The cleanest observability-specific evidence is still the urban-context ablation in all-day sparse high occlusion:
+The best observability-specific ablation evidence is still the urban-context comparison:
 
-- `rendezvous_only`: `5.52` with context, `5.05` without
-- `rendezvous_observable`: `5.72` with context, `5.19` without
-- `ml_meeting_point_comparator`: `5.80` with context, `5.20` without
+- earlier sparse-high-occlusion calibrated slice:
+  - `rendezvous_only`: `5.52` with context vs `5.05` without
+  - `rendezvous_observable`: `5.72` with context vs `5.19` without
 
 Interpretation:
 
-- urban context helps the hard-regime ranking
-- this is stronger evidence than claiming the current component weights are individually optimal
+- context helps when the route choice is close
+- this is stronger evidence than pretending every hand-tuned component weight is independently optimal
 
-## Boundary Cases
+## Green Transfer
 
-The hard-regime story should remain disciplined because the boundary cases are mixed:
+From [rendezvous_green_policy_summary.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_green_policy_summary.csv):
 
-- in `very_sparse_low_occlusion`, `walk_aware_rendezvous` and the ML comparator slightly edge the deterministic observability policy
-- in `very_sparse_extreme_occlusion`, `rendezvous_only` slightly edges `rendezvous_observable`
+### Green primary
 
-Those are not failures. They show that the observability layer is not universally dominant, which is exactly why the paper should emphasize difficult urban regimes rather than make a universal claim.
+- `corridor_only`: `-0.00`
+- `rendezvous_only`: `4.32`
+- `rendezvous_observable`: `4.31`
 
-## ML Comparator Status
+### Green sparse high occlusion
+
+- `corridor_only`: `-6.56`
+- `rendezvous_only`: `-6.04`
+- `rendezvous_observable`: `-6.10`
+
+From [rendezvous_green_dispatch_policy_summary.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_green_dispatch_policy_summary.csv):
+
+### Green sparse high occlusion dispatch
+
+- `corridor_only`: `-7.18`
+- `rendezvous_only`: `-6.82`
+- `rendezvous_observable`: `-6.86`
+
+Interpretation:
+
+- Green supports the paper’s main primitive shift:
+  - corridor-only remains clearly weakest
+  - rendezvous-aware valuation transfers
+- Green does **not** support a universal observability-win claim
+
+## Curated Case Studies
+
+From [rendezvous_case_study_agreement.csv](K:\Kamuit\Uber_Logic\Research_paper_2\results\rendezvous_case_study_agreement.csv):
+
+- curated route-pair panels: `8`
+- rubric agreement with observability-aware preference: `8/8`
+
+The panels are in [paper_rendezvous/figures](K:\Kamuit\Uber_Logic\Research_paper_2\paper_rendezvous\figures):
+
+- [rendezvous_fig2_matched_pair_mechanism.png](K:\Kamuit\Uber_Logic\Research_paper_2\paper_rendezvous\figures\rendezvous_fig2_matched_pair_mechanism.png)
+- [rendezvous_fig9_case_studies.png](K:\Kamuit\Uber_Logic\Research_paper_2\paper_rendezvous\figures\rendezvous_fig9_case_studies.png)
+- [rendezvous_appendix_case_studies.png](K:\Kamuit\Uber_Logic\Research_paper_2\paper_rendezvous\figures\rendezvous_appendix_case_studies.png)
+
+Interpretation:
+
+- this is a structured local-geometry sanity check, not a user study
+- it strengthens the paper by showing that the selected route pairs visibly differ in anchor quality and local context
+
+## ML Comparator
 
 The ML comparator remains secondary.
 
-Current held-out diagnostics from [rendezvous_meeting_point_metrics_yellow.json](K:\Kamuit\Uber_Logic\Research_paper_2\models\rendezvous_meeting_point_metrics_yellow.json):
+- it is still competitive in some Yellow slices
+- it is not needed for the main claim
+- it should stay out of the abstract’s central contribution statement
 
-- validation observed ROC AUC: `0.6543`
-- test observed ROC AUC: `0.5641`
+## Best Honest Framing
 
-Interpretation:
+The strongest honest framing is:
 
-- it is competitive enough to retain as a comparison
-- it is still not strong enough to become the paper's main method
-
-## Best Current Paper Framing
-
-The strongest honest headline is:
-
-`Routes should be evaluated by feasible rendezvous opportunities, and an observability-aware version of that evaluation is especially valuable in sparse, high-occlusion regimes. That hard-regime advantage survives stronger baselines, urban-context ablation, and time-slice robustness checks.`
+`Routes should be evaluated by feasible rendezvous opportunities, and an observability-aware version of that evaluation is especially valuable in sparse, high-occlusion regimes. That claim is supported by stronger baselines, matched route-pair isolation, Green transfer, and curated local-geometry case studies, without requiring a universal observability-win claim.`
