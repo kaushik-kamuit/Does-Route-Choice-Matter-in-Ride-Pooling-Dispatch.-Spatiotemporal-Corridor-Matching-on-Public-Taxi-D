@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import h3
 import ijson
@@ -20,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESOLUTION = 9
 DEFAULT_DENSIFY_STEP_M = 40.0
 DOWNLOAD_CHUNK_BYTES = 1 << 20
+SOCRATA_PAGE_SIZE = 20_000
 USER_AGENT = 'codex-rendezvous-urban-context/1.0'
 
 RAW_DIR = ROOT / 'data' / 'urban_context' / 'raw'
@@ -41,6 +44,9 @@ class UrbanContextAsset:
 
     def metadata_path(self) -> Path:
         return RAW_DIR / f'{self.key}.metadata.json'
+
+    def download_state_path(self) -> Path:
+        return RAW_DIR / f'{self.key}.download.json'
 
 
 ASSETS: dict[str, UrbanContextAsset] = {
@@ -109,7 +115,7 @@ def download_asset(key: str, *, force: bool = False, timeout_s: int = 120) -> Pa
     ensure_context_dirs()
     asset = get_asset(key)
     target = asset.raw_path()
-    if target.exists() and not force:
+    if target.exists() and not force and _download_is_complete(asset):
         return target
 
     session = requests.Session()
@@ -118,12 +124,21 @@ def download_asset(key: str, *, force: bool = False, timeout_s: int = 120) -> Pa
     metadata.raise_for_status()
     asset.metadata_path().write_text(json.dumps(metadata.json(), indent=2), encoding='utf-8')
 
-    with session.get(asset.download_url, stream=True, timeout=timeout_s) as response:
-        response.raise_for_status()
-        with target.open('wb') as handle:
-            for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_BYTES):
-                if chunk:
-                    handle.write(chunk)
+    rows_downloaded, page_count = _download_csv_pages(session, asset, target, timeout_s=timeout_s)
+    asset.download_state_path().write_text(
+        json.dumps(
+            {
+                'complete': True,
+                'download_url': asset.download_url,
+                'row_count': rows_downloaded,
+                'page_count': page_count,
+                'page_size': SOCRATA_PAGE_SIZE,
+                'downloaded_at': datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
     return target
 
 
@@ -139,12 +154,19 @@ def refresh_source_manifest(*, force: bool = False, timeout_s: int = 60) -> Path
             response.raise_for_status()
             metadata_path.write_text(json.dumps(response.json(), indent=2), encoding='utf-8')
         metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+        download_state = {}
+        download_state_path = asset.download_state_path()
+        if download_state_path.exists():
+            download_state = json.loads(download_state_path.read_text(encoding='utf-8'))
         manifest[key] = {
             'dataset_id': asset.dataset_id,
             'title': asset.title,
             'docs_url': asset.docs_url,
             'download_url': asset.download_url,
             'raw_path': str(asset.raw_path()),
+            'download_complete': bool(download_state.get('complete', False)),
+            'download_row_count': int(download_state.get('row_count', 0) or 0),
+            'download_page_count': int(download_state.get('page_count', 0) or 0),
             'rows_updated_at': metadata.get('rowsUpdatedAt'),
             'view_last_modified': metadata.get('viewLastModified'),
             'attribution': metadata.get('attribution'),
@@ -418,6 +440,72 @@ def _iter_geojson_features(path: Path) -> Iterator[dict[str, object]]:
             if geometry is None:
                 continue
             yield feature
+
+
+def _download_is_complete(asset: UrbanContextAsset) -> bool:
+    if not asset.raw_path().exists():
+        return False
+    state_path = asset.download_state_path()
+    if not state_path.exists():
+        return False
+    try:
+        state = json.loads(state_path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError:
+        return False
+    return bool(state.get('complete'))
+
+
+def _download_csv_pages(
+    session: requests.Session,
+    asset: UrbanContextAsset,
+    target: Path,
+    *,
+    timeout_s: int,
+) -> tuple[int, int]:
+    temp_target = target.with_suffix(target.suffix + '.tmp')
+    total_rows = 0
+    page_count = 0
+    header: str | None = None
+    offset = 0
+
+    with temp_target.open('w', encoding='utf-8', newline='') as handle:
+        while True:
+            page_url = _with_socrata_paging(asset.download_url, limit=SOCRATA_PAGE_SIZE, offset=offset)
+            response = session.get(page_url, timeout=timeout_s)
+            response.raise_for_status()
+            text = response.text
+            lines = text.splitlines()
+            if not lines:
+                break
+            page_header = lines[0]
+            data_lines = lines[1:]
+            if header is None:
+                header = page_header
+                handle.write(page_header + '\n')
+            elif page_header != header:
+                raise RuntimeError(f'Urban context download header changed mid-stream for {asset.key}')
+
+            if not data_lines:
+                break
+
+            handle.write('\n'.join(data_lines))
+            handle.write('\n')
+            total_rows += len(data_lines)
+            page_count += 1
+            if len(data_lines) < SOCRATA_PAGE_SIZE:
+                break
+            offset += SOCRATA_PAGE_SIZE
+
+    temp_target.replace(target)
+    return total_rows, page_count
+
+
+def _with_socrata_paging(url: str, *, limit: int, offset: int) -> str:
+    parsed = urlsplit(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query['$limit'] = str(limit)
+    query['$offset'] = str(offset)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
 def _line_cells_from_geometry(geometry: BaseGeometry, resolution: int, densify_step_m: float) -> tuple[tuple[str, ...], float]:

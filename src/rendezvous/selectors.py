@@ -22,6 +22,7 @@ FEATURE_NAMES = [
     "urban_clutter_index",
     "sidewalk_access_score",
     "building_height_proxy",
+    "context_is_imputed",
 ]
 
 
@@ -37,21 +38,35 @@ class MeetingPointSelector(ABC):
             if current is None or self.opportunity_value(opportunity) > self.opportunity_value(current):
                 best_per_rider[opportunity.rider_id] = opportunity
 
-        selected: list[RendezvousOpportunity] = []
-        remaining = seats
         ranked = sorted(
             best_per_rider.values(),
             key=lambda opportunity: (self.opportunity_value(opportunity), -opportunity.anchor_idx),
             reverse=True,
         )
+        if seats <= 0 or not ranked:
+            return []
+
+        best_by_capacity: dict[int, tuple[float, tuple[RendezvousOpportunity, ...]]] = {0: (0.0, tuple())}
         for opportunity in ranked:
-            if opportunity.passenger_count > remaining:
+            weight = max(int(opportunity.passenger_count), 0)
+            if weight <= 0 or weight > seats:
                 continue
-            remaining -= opportunity.passenger_count
-            selected.append(opportunity)
-            if remaining <= 0:
-                break
-        return selected
+            for used_capacity, (used_value, used_selection) in sorted(best_by_capacity.items(), reverse=True):
+                new_capacity = used_capacity + weight
+                if new_capacity > seats:
+                    continue
+                new_value = used_value + self.opportunity_value(opportunity)
+                new_selection = used_selection + (opportunity,)
+                current = best_by_capacity.get(new_capacity)
+                if current is None or _selection_key(new_value, new_selection) > _selection_key(*current):
+                    best_by_capacity[new_capacity] = (new_value, new_selection)
+
+        best_value, best_selection = max(
+            best_by_capacity.values(),
+            key=lambda item: _selection_key(item[0], item[1]),
+        )
+        _ = best_value
+        return list(best_selection)
 
 
 class DeterministicMeetingPointSelector(MeetingPointSelector):
@@ -64,9 +79,23 @@ class DeterministicMeetingPointSelector(MeetingPointSelector):
         return opportunity.nominal_value
 
 
+class WalkAwareMeetingPointSelector(MeetingPointSelector):
+    def __init__(self, *, walk_penalty_per_min: float = 0.5) -> None:
+        self.walk_penalty_per_min = max(0.0, float(walk_penalty_per_min))
+
+    def opportunity_value(self, opportunity: RendezvousOpportunity) -> float:
+        return max(0.0, opportunity.fare_share - self.walk_penalty_per_min * opportunity.walk_min)
+
+
 class MLMeetingPointSelector(MeetingPointSelector):
     def __init__(self, model: GradientBoostingRegressor | None = None) -> None:
-        self.model = model if model is not None else GradientBoostingRegressor(random_state=42)
+        self.model = model if model is not None else GradientBoostingRegressor(
+            random_state=42,
+            n_estimators=250,
+            learning_rate=0.05,
+            max_depth=3,
+            subsample=0.8,
+        )
         self._is_fit = model is not None
 
     def fit(self, opportunities: Iterable[RendezvousOpportunity]) -> "MLMeetingPointSelector":
@@ -108,4 +137,14 @@ def feature_vector(opportunity: RendezvousOpportunity) -> list[float]:
         opportunity.urban_clutter_index,
         opportunity.sidewalk_access_score,
         opportunity.building_height_proxy,
+        float(opportunity.context_is_imputed),
     ]
+
+
+def _selection_key(
+    total_value: float,
+    selection: tuple[RendezvousOpportunity, ...],
+) -> tuple[float, int, int, tuple[int, ...]]:
+    rider_signature = tuple(sorted((item.rider_id for item in selection), reverse=True))
+    anchor_signature = sum(item.anchor_idx for item in selection)
+    return (round(float(total_value), 12), len(selection), -anchor_signature, rider_signature)

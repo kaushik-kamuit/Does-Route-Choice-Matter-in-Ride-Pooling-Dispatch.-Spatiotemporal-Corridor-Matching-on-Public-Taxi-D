@@ -48,6 +48,7 @@ class RendezvousOpportunity:
     urban_clutter_index: float
     sidewalk_access_score: float
     building_height_proxy: float
+    context_is_imputed: bool
     observability_score: float
     success_probability: float
 
@@ -61,18 +62,27 @@ class RendezvousOpportunity:
 
 
 @dataclass(frozen=True)
+class CorridorCandidate:
+    rider_id: int
+    fare_share: float
+    passenger_count: int
+
+
+@dataclass(frozen=True)
 class RouteOpportunityEvaluation:
     route_idx: int
     route: RouteInfo
     corridor: Corridor
     route_cells: tuple[str, ...]
     candidate_count: int
-    exact_time_candidate_count: int
+    time_eligible_candidate_count: int
     feasible_opportunity_count: int
     observable_opportunity_count: int
     route_cost: float
     nominal_route_value: float
     observable_route_value: float
+    walk_route_value: float
+    candidate_riders: tuple[CorridorCandidate, ...]
     opportunities: tuple[RendezvousOpportunity, ...]
 
 
@@ -90,7 +100,7 @@ class PolicyOutcome:
     successful_riders: int
     attempted_riders: int
     candidate_count: int
-    exact_time_candidate_count: int
+    time_eligible_candidate_count: int
     feasible_opportunity_count: int
     observable_opportunity_count: int
     mean_observability: float
@@ -113,7 +123,7 @@ class PolicyOutcome:
             "successful_riders": self.successful_riders,
             "attempted_riders": self.attempted_riders,
             "candidate_count": self.candidate_count,
-            "exact_time_candidate_count": self.exact_time_candidate_count,
+            "time_eligible_candidate_count": self.time_eligible_candidate_count,
             "feasible_opportunity_count": self.feasible_opportunity_count,
             "observable_opportunity_count": self.observable_opportunity_count,
             "mean_observability": self.mean_observability,
@@ -152,6 +162,8 @@ class DispatchOutcome:
     mean_walk_min: float
     mean_observability: float
     open_requests_before: int
+    attempted_rider_ids: tuple[int, ...]
+    successful_rider_ids: tuple[int, ...]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -169,6 +181,8 @@ class DispatchOutcome:
             "mean_walk_min": self.mean_walk_min,
             "mean_observability": self.mean_observability,
             "open_requests_before": self.open_requests_before,
+            "attempted_rider_ids": ";".join(str(rider_id) for rider_id in self.attempted_rider_ids),
+            "successful_rider_ids": ";".join(str(rider_id) for rider_id in self.successful_rider_ids),
         }
 
 
@@ -176,7 +190,11 @@ class DispatchOutcome:
 class DispatchSummary:
     policy: str
     seed: int
+    requested_drivers: int
     launched_drivers: int
+    drivers_skipped_no_route: int
+    route_coverage_rate: float
+    eligible_riders: int
     served_riders: int
     total_profit: float
     profit_per_driver: float
@@ -189,7 +207,11 @@ class DispatchSummary:
         return {
             "policy": self.policy,
             "seed": self.seed,
+            "requested_drivers": self.requested_drivers,
             "launched_drivers": self.launched_drivers,
+            "drivers_skipped_no_route": self.drivers_skipped_no_route,
+            "route_coverage_rate": self.route_coverage_rate,
+            "eligible_riders": self.eligible_riders,
             "served_riders": self.served_riders,
             "total_profit": self.total_profit,
             "profit_per_driver": self.profit_per_driver,

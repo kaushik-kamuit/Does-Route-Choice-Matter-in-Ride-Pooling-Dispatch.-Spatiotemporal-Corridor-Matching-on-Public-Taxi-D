@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
 def summarize_driver_outcomes(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
-    keys = ["policy", "domain", "scenario_name", "rider_density_pct", "occlusion_lambda", "meeting_k_ring"]
+    keys = _group_keys(df)
     return (
         df.groupby(keys, as_index=False)
         .agg(
@@ -18,6 +19,7 @@ def summarize_driver_outcomes(df: pd.DataFrame) -> pd.DataFrame:
             mean_attempted_riders=("attempted_riders", "mean"),
             mean_nominal_realized_gap=("nominal_realized_gap", "mean"),
             mean_candidate_count=("candidate_count", "mean"),
+            mean_time_eligible_candidate_count=("time_eligible_candidate_count", "mean"),
             mean_feasible_opportunity_count=("feasible_opportunity_count", "mean"),
             mean_observable_opportunity_count=("observable_opportunity_count", "mean"),
             mean_walk_min=("mean_walk_min", "mean"),
@@ -31,7 +33,7 @@ def summarize_driver_outcomes(df: pd.DataFrame) -> pd.DataFrame:
 def summarize_dispatch(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
-    keys = ["policy", "domain", "scenario_name", "rider_density_pct", "occlusion_lambda", "meeting_k_ring"]
+    keys = _group_keys(df)
     return (
         df.groupby(keys, as_index=False)
         .agg(
@@ -41,15 +43,129 @@ def summarize_dispatch(df: pd.DataFrame) -> pd.DataFrame:
             mean_wait_min=("mean_wait_min", "mean"),
             mean_walk_min=("mean_walk_min", "mean"),
             mean_observability=("mean_observability", "mean"),
+            mean_route_coverage_rate=("route_coverage_rate", "mean"),
+            mean_drivers_skipped_no_route=("drivers_skipped_no_route", "mean"),
+            mean_eligible_riders=("eligible_riders", "mean"),
             n_runs=("seed", "count"),
         )
         .sort_values(keys)
     )
 
 
+def bootstrap_mean_intervals(
+    df: pd.DataFrame,
+    *,
+    value_col: str,
+    unit_cols: list[str],
+    iterations: int = 1000,
+    seed: int = 42,
+) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame()
+    keys = _group_keys(df)
+    rng = np.random.default_rng(seed)
+    rows: list[dict[str, object]] = []
+    for group_values, group_df in df.groupby(keys, sort=False):
+        if not isinstance(group_values, tuple):
+            group_values = (group_values,)
+        unit_df = (
+            group_df.groupby(unit_cols, as_index=False)[value_col]
+            .mean()
+            .sort_values(unit_cols)
+            .reset_index(drop=True)
+        )
+        values = unit_df[value_col].to_numpy(dtype=float)
+        if len(values) == 0:
+            continue
+        draw_count = max(int(iterations), 1)
+        draws = rng.choice(values, size=(draw_count, len(values)), replace=True).mean(axis=1)
+        row = {key: value for key, value in zip(keys, group_values)}
+        row.update(
+            {
+                "metric": value_col,
+                "unit_count": int(len(values)),
+                "mean": float(values.mean()),
+                "ci_low": float(np.quantile(draws, 0.025)),
+                "ci_high": float(np.quantile(draws, 0.975)),
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def paired_policy_deltas(
+    df: pd.DataFrame,
+    *,
+    value_col: str,
+    unit_cols: list[str],
+    reference_policy: str,
+    iterations: int = 1000,
+    seed: int = 42,
+) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame()
+    keys = [key for key in _group_keys(df) if key != "policy"]
+    group_cols = keys + unit_cols + ["policy"]
+    reduced = (
+        df[group_cols + [value_col]]
+        .groupby(group_cols, as_index=False)[value_col]
+        .mean()
+    )
+    pivot = reduced.pivot_table(index=keys + unit_cols, columns="policy", values=value_col)
+    if reference_policy not in pivot.columns:
+        return pd.DataFrame()
+
+    rng = np.random.default_rng(seed)
+    rows: list[dict[str, object]] = []
+    for index_values, row in pivot.iterrows():
+        if not isinstance(index_values, tuple):
+            index_values = (index_values,)
+        index_map = dict(zip(keys + unit_cols, index_values))
+        reference_value = row.get(reference_policy)
+        if pd.isna(reference_value):
+            continue
+        for policy, policy_value in row.items():
+            if policy == reference_policy or pd.isna(policy_value):
+                continue
+            rows.append(
+                {
+                    **{key: index_map[key] for key in keys},
+                    **{key: index_map[key] for key in unit_cols},
+                    "reference_policy": reference_policy,
+                    "policy": policy,
+                    "delta": float(policy_value - reference_value),
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame()
+    delta_df = pd.DataFrame(rows)
+    summary_rows: list[dict[str, object]] = []
+    for group_values, group_df in delta_df.groupby(keys + ["reference_policy", "policy"], sort=False):
+        if not isinstance(group_values, tuple):
+            group_values = (group_values,)
+        deltas = group_df["delta"].to_numpy(dtype=float)
+        draws = rng.choice(deltas, size=(max(int(iterations), 1), len(deltas)), replace=True).mean(axis=1)
+        record = {key: value for key, value in zip(keys + ["reference_policy", "policy"], group_values)}
+        record.update(
+            {
+                "metric": value_col,
+                "unit_count": int(len(deltas)),
+                "mean_delta": float(deltas.mean()),
+                "ci_low": float(np.quantile(draws, 0.025)),
+                "ci_high": float(np.quantile(draws, 0.975)),
+                "share_positive": float(np.mean(deltas > 0.0)),
+                "share_nonnegative": float(np.mean(deltas >= 0.0)),
+            }
+        )
+        summary_rows.append(record)
+    return pd.DataFrame(summary_rows)
+
+
 def write_result_views(results_dir: Path, driver_summary: pd.DataFrame, dispatch_summary: pd.DataFrame | None = None) -> None:
     if not driver_summary.empty:
-        primary = driver_summary[driver_summary["scenario_name"] == "primary"].copy()
+        primary = _default_slice(driver_summary)
+        primary = primary[primary["scenario_name"] == "primary"].copy()
         if not primary.empty:
             primary.to_csv(results_dir / "rendezvous_primary_summary.csv", index=False)
 
@@ -64,8 +180,38 @@ def write_result_views(results_dir: Path, driver_summary: pd.DataFrame, dispatch
             if not comparator.empty:
                 comparator.to_csv(results_dir / "rendezvous_meeting_point_comparison.csv", index=False)
 
-        sensitivity = driver_summary.sort_values(["occlusion_lambda", "policy"])
+        sensitivity = _default_slice(driver_summary).sort_values(["occlusion_lambda", "policy"])
         sensitivity.to_csv(results_dir / "rendezvous_occlusion_sensitivity.csv", index=False)
 
     if dispatch_summary is not None and not dispatch_summary.empty:
-        dispatch_summary.to_csv(results_dir / "rendezvous_dispatch_policy_summary.csv", index=False)
+        _default_slice(dispatch_summary).to_csv(results_dir / "rendezvous_dispatch_policy_summary.csv", index=False)
+
+
+def _default_slice(df: pd.DataFrame) -> pd.DataFrame:
+    subset = df.copy()
+    if "time_slice" in subset.columns and "all_day" in set(subset["time_slice"].dropna().astype(str)):
+        subset = subset[subset["time_slice"] == "all_day"]
+    if "observability_profile" in subset.columns and "calibrated" in set(subset["observability_profile"].dropna().astype(str)):
+        subset = subset[subset["observability_profile"] == "calibrated"]
+    if "observability_ablation" in subset.columns:
+        subset = subset[subset["observability_ablation"] == "full"]
+    if "use_urban_context" in subset.columns:
+        subset = subset[subset["use_urban_context"] == True]  # noqa: E712
+    return subset
+
+
+def _group_keys(df: pd.DataFrame) -> list[str]:
+    preferred = [
+        "policy",
+        "domain",
+        "scenario_name",
+        "time_slice",
+        "rider_density_pct",
+        "occlusion_lambda",
+        "meeting_k_ring",
+        "observability_profile",
+        "observability_ablation",
+        "use_urban_context",
+        "walk_penalty_per_min",
+    ]
+    return [column for column in preferred if column in df.columns]

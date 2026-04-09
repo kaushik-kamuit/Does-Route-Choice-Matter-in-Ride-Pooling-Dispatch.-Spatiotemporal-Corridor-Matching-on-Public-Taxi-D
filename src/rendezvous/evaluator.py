@@ -12,6 +12,7 @@ from spatial.router import RouteInfo
 
 from .config import RendezvousConfig
 from .data_types import (
+    CorridorCandidate,
     DriverPolicyEvaluation,
     DriverTrip,
     METERS_PER_MILE,
@@ -29,8 +30,13 @@ from .meeting_points import (
     route_progress,
     turn_severity,
 )
-from .observability import compute_observability_score, pickup_success_probability
-from .selectors import DeterministicMeetingPointSelector, MLMeetingPointSelector, MeetingPointSelector
+from .observability import compute_observability_score, pickup_success_probability, weights_for_mode, weights_for_profile
+from .selectors import (
+    DeterministicMeetingPointSelector,
+    MLMeetingPointSelector,
+    MeetingPointSelector,
+    WalkAwareMeetingPointSelector,
+)
 from .urban_context import UrbanContextFeatures, UrbanContextIndex
 
 NYC_LAT = 40.7
@@ -38,6 +44,9 @@ COS_LAT = cos(radians(NYC_LAT))
 
 ALL_POLICIES = [
     "corridor_only",
+    "time_only_baseline",
+    "feasible_count_baseline",
+    "walk_aware_rendezvous",
     "rendezvous_only",
     "rendezvous_observable",
     "ml_meeting_point_comparator",
@@ -58,6 +67,7 @@ def evaluate_driver_policies(
     route_evaluations: list[RouteOpportunityEvaluation] = []
     nominal_selector = DeterministicMeetingPointSelector(use_observability=False)
     observable_selector = DeterministicMeetingPointSelector(use_observability=True)
+    walk_selector = WalkAwareMeetingPointSelector(walk_penalty_per_min=config.walk_penalty_per_min)
     for route_idx, route in enumerate(routes):
         corridor = build_corridor(
             route.polyline,
@@ -71,7 +81,9 @@ def evaluate_driver_policies(
             window_bins=config.candidate_window_bins,
             max_request_offset_min=config.max_request_offset_min,
             query_datetime=driver.departure_time,
+            require_dropoff_in_corridor=config.require_dropoff_in_corridor,
         )
+        time_eligible_candidates = candidates
         if available_rider_ids is not None and not candidates.empty:
             candidates = candidates[candidates.index.isin(available_rider_ids)]
 
@@ -89,16 +101,25 @@ def evaluate_driver_policies(
             urban_context=urban_context,
         )
         route_cost = (route.distance_m / METERS_PER_MILE) * driver.cost_per_mile
+        candidate_riders = tuple(
+            CorridorCandidate(
+                rider_id=int(rider_id),
+                fare_share=float(row["fare_amount"]) * driver.platform_share,
+                passenger_count=int(row["passenger_count"]),
+            )
+            for rider_id, row in candidates.iterrows()
+        )
         nominal_selected = nominal_selector.select(opportunities, seats=driver.seats)
         observable_selected = observable_selector.select(opportunities, seats=driver.seats)
+        walk_selected = walk_selector.select(opportunities, seats=driver.seats)
         route_evaluations.append(
             RouteOpportunityEvaluation(
                 route_idx=route_idx,
                 route=route,
                 corridor=corridor,
                 route_cells=route_cells,
-                candidate_count=len(candidates),
-                exact_time_candidate_count=stats.exact_time_eligible,
+                candidate_count=len(candidate_riders),
+                time_eligible_candidate_count=len(time_eligible_candidates),
                 feasible_opportunity_count=len(opportunities),
                 observable_opportunity_count=sum(
                     1 for opportunity in opportunities if opportunity.success_probability >= config.observable_threshold
@@ -106,6 +127,8 @@ def evaluate_driver_policies(
                 route_cost=route_cost,
                 nominal_route_value=sum(item.nominal_value for item in nominal_selected) - route_cost,
                 observable_route_value=sum(item.observable_value for item in observable_selected) - route_cost,
+                walk_route_value=sum(walk_selector.opportunity_value(item) for item in walk_selected) - route_cost,
+                candidate_riders=candidate_riders,
                 opportunities=tuple(opportunities),
             )
         )
@@ -114,6 +137,9 @@ def evaluate_driver_policies(
         return DriverPolicyEvaluation(driver_id=driver.driver_id, route_evaluations=tuple(), plans={})
 
     corridor_idx = _choose_route(route_evaluations, lambda row: float(row.candidate_count))
+    time_only_idx = _choose_route(route_evaluations, lambda row: -row.route_cost)
+    feasible_count_idx = _choose_route(route_evaluations, lambda row: float(row.feasible_opportunity_count))
+    walk_idx = _choose_route(route_evaluations, lambda row: row.walk_route_value)
     nominal_idx = _choose_route(route_evaluations, lambda row: row.nominal_route_value)
     observable_idx = _choose_route(route_evaluations, lambda row: row.observable_route_value)
     ml_idx = None
@@ -124,13 +150,36 @@ def evaluate_driver_policies(
         )
 
     plans = {
-        "corridor_only": _build_policy_outcome(
-            "corridor_only",
+        "corridor_only": _build_corridor_policy_outcome(
             driver,
             route_evaluations[corridor_idx],
+            config=config,
             score=float(route_evaluations[corridor_idx].candidate_count),
-            selector=nominal_selector,
             seed=seed,
+        ),
+        "time_only_baseline": _build_policy_outcome(
+            "time_only_baseline",
+            driver,
+            route_evaluations[time_only_idx],
+            score=-route_evaluations[time_only_idx].route_cost,
+            selector=nominal_selector,
+            seed=seed + 7,
+        ),
+        "feasible_count_baseline": _build_policy_outcome(
+            "feasible_count_baseline",
+            driver,
+            route_evaluations[feasible_count_idx],
+            score=float(route_evaluations[feasible_count_idx].feasible_opportunity_count),
+            selector=nominal_selector,
+            seed=seed + 11,
+        ),
+        "walk_aware_rendezvous": _build_policy_outcome(
+            "walk_aware_rendezvous",
+            driver,
+            route_evaluations[walk_idx],
+            score=route_evaluations[walk_idx].walk_route_value,
+            selector=walk_selector,
+            seed=seed + 13,
         ),
         "rendezvous_only": _build_policy_outcome(
             "rendezvous_only",
@@ -183,6 +232,8 @@ def _build_opportunities(
     route_line = _make_route_line(route.polyline)
     opportunities: list[RendezvousOpportunity] = []
     walk_speed_mps = max(driver.walk_speed_kmh, 1e-6) * 1000.0 / 3600.0
+    base_weights = weights_for_profile(config.observability_profile, domain=config.domain)
+    observability_weights = weights_for_mode(config.observability_ablation, base_weights=base_weights)
 
     for rider_id, row in candidates.iterrows():
         anchor_indices = candidate_anchor_indices(
@@ -216,17 +267,22 @@ def _build_opportunities(
             route_clutter = anchor_clutter(route_cells, anchor_idx)
             context_features = urban_context.lookup(anchor_cell) if urban_context else UrbanContextFeatures()
             clutter = min(
-                3.0,
+                4.0,
                 route_clutter
                 + context_features.urban_clutter_index
-                + max(0.0, 1.0 - context_features.sidewalk_access_score),
+                + max(0.0, 1.0 - context_features.sidewalk_access_score)
+                + 0.5 * context_features.building_height_proxy
+                + 0.25 * context_features.street_complexity,
             )
             observability_score = compute_observability_score(
                 local_straightness=straightness,
                 turn_severity=turn,
                 ambiguity_count=ambiguity_count,
                 anchor_clutter=clutter,
+                weights=observability_weights,
             )
+            if context_features.is_imputed:
+                observability_score *= 0.9
             success_probability = pickup_success_probability(
                 observability_score,
                 occlusion_lambda=config.occlusion_lambda,
@@ -251,12 +307,75 @@ def _build_opportunities(
                     urban_clutter_index=context_features.urban_clutter_index,
                     sidewalk_access_score=context_features.sidewalk_access_score,
                     building_height_proxy=context_features.building_height_proxy,
+                    context_is_imputed=context_features.is_imputed,
                     observability_score=observability_score,
                     success_probability=success_probability,
                 )
             )
 
     return opportunities
+
+
+def _build_corridor_policy_outcome(
+    driver: DriverTrip,
+    route_eval: RouteOpportunityEvaluation,
+    *,
+    config: RendezvousConfig,
+    score: float,
+    seed: int,
+) -> PolicyOutcome:
+    selected_candidates = _select_corridor_candidates(route_eval.candidate_riders, seats=driver.seats)
+    opportunities_by_rider = _opportunities_by_rider(route_eval.opportunities)
+    rng = np.random.default_rng(seed + driver.driver_id + route_eval.route_idx)
+
+    realized_revenue = 0.0
+    expected_revenue = 0.0
+    nominal_revenue = 0.0
+    successful_rider_ids: list[int] = []
+    attempted_rider_ids: list[int] = []
+    observability_values: list[float] = []
+    walk_values: list[float] = []
+
+    for candidate in selected_candidates:
+        attempted_rider_ids.append(candidate.rider_id)
+        nominal_revenue += candidate.fare_share
+        chosen_anchor = _corridor_anchor_choice(opportunities_by_rider.get(candidate.rider_id, ()))
+        if chosen_anchor is None:
+            observability_values.append(0.0)
+            walk_values.append(config.max_walk_min)
+            continue
+
+        expected_revenue += chosen_anchor.observable_value
+        observability_values.append(chosen_anchor.observability_score)
+        walk_values.append(chosen_anchor.walk_min)
+        if rng.random() <= chosen_anchor.success_probability:
+            realized_revenue += chosen_anchor.fare_share
+            successful_rider_ids.append(candidate.rider_id)
+
+    mean_observability = float(np.mean(observability_values)) if observability_values else 0.0
+    mean_walk_min = float(np.mean(walk_values)) if walk_values else 0.0
+    return PolicyOutcome(
+        policy="corridor_only",
+        route_idx=route_eval.route_idx,
+        score=float(score),
+        route_distance_miles=route_eval.route.distance_m / METERS_PER_MILE,
+        route_cost=route_eval.route_cost,
+        expected_value=expected_revenue - route_eval.route_cost,
+        nominal_revenue=nominal_revenue,
+        realized_revenue=realized_revenue,
+        actual_profit=realized_revenue - route_eval.route_cost,
+        successful_riders=len(successful_rider_ids),
+        attempted_riders=len(selected_candidates),
+        candidate_count=route_eval.candidate_count,
+        time_eligible_candidate_count=route_eval.time_eligible_candidate_count,
+        feasible_opportunity_count=route_eval.feasible_opportunity_count,
+        observable_opportunity_count=route_eval.observable_opportunity_count,
+        mean_observability=mean_observability,
+        mean_walk_min=mean_walk_min,
+        nominal_realized_gap=nominal_revenue - realized_revenue,
+        selected_rider_ids=tuple(attempted_rider_ids),
+        successful_rider_ids=tuple(successful_rider_ids),
+    )
 
 
 def _build_policy_outcome(
@@ -296,7 +415,7 @@ def _build_policy_outcome(
         successful_riders=len(successful_rider_ids),
         attempted_riders=len(selected),
         candidate_count=route_eval.candidate_count,
-        exact_time_candidate_count=route_eval.exact_time_candidate_count,
+        time_eligible_candidate_count=route_eval.time_eligible_candidate_count,
         feasible_opportunity_count=route_eval.feasible_opportunity_count,
         observable_opportunity_count=route_eval.observable_opportunity_count,
         mean_observability=mean_observability,
@@ -304,6 +423,65 @@ def _build_policy_outcome(
         nominal_realized_gap=nominal_revenue - realized_revenue,
         selected_rider_ids=tuple(opportunity.rider_id for opportunity in selected),
         successful_rider_ids=tuple(successful_rider_ids),
+    )
+
+
+def _select_corridor_candidates(
+    candidates: tuple[CorridorCandidate, ...],
+    *,
+    seats: int,
+) -> list[CorridorCandidate]:
+    ranked = sorted(
+        candidates,
+        key=lambda item: (item.fare_share, -item.passenger_count, -item.rider_id),
+        reverse=True,
+    )
+    if seats <= 0 or not ranked:
+        return []
+
+    best_by_capacity: dict[int, tuple[float, tuple[CorridorCandidate, ...]]] = {0: (0.0, tuple())}
+    for candidate in ranked:
+        weight = max(int(candidate.passenger_count), 0)
+        if weight <= 0 or weight > seats:
+            continue
+        for used_capacity, (used_value, used_selection) in sorted(best_by_capacity.items(), reverse=True):
+            new_capacity = used_capacity + weight
+            if new_capacity > seats:
+                continue
+            new_value = used_value + candidate.fare_share
+            new_selection = used_selection + (candidate,)
+            current = best_by_capacity.get(new_capacity)
+            if current is None or _candidate_selection_key(new_value, new_selection) > _candidate_selection_key(*current):
+                best_by_capacity[new_capacity] = (new_value, new_selection)
+
+    return list(max(best_by_capacity.values(), key=lambda item: _candidate_selection_key(item[0], item[1]))[1])
+
+
+def _candidate_selection_key(
+    total_value: float,
+    selection: tuple[CorridorCandidate, ...],
+) -> tuple[float, int, tuple[int, ...]]:
+    rider_signature = tuple(sorted((item.rider_id for item in selection), reverse=True))
+    return (round(float(total_value), 12), len(selection), rider_signature)
+
+
+def _opportunities_by_rider(
+    opportunities: tuple[RendezvousOpportunity, ...],
+) -> dict[int, tuple[RendezvousOpportunity, ...]]:
+    grouped: dict[int, list[RendezvousOpportunity]] = {}
+    for opportunity in opportunities:
+        grouped.setdefault(opportunity.rider_id, []).append(opportunity)
+    return {rider_id: tuple(items) for rider_id, items in grouped.items()}
+
+
+def _corridor_anchor_choice(
+    opportunities: tuple[RendezvousOpportunity, ...],
+) -> RendezvousOpportunity | None:
+    if not opportunities:
+        return None
+    return min(
+        opportunities,
+        key=lambda item: (item.walk_min, -item.travel_fraction, item.anchor_idx),
     )
 
 

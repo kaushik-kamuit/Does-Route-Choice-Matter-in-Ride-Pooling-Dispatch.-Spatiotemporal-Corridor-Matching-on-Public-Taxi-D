@@ -87,18 +87,23 @@ class RendezvousDispatcher:
         driver_batches: dict[pd.Timestamp, list] = defaultdict(list)
         for trip in driver_trips:
             driver_batches[self._batch_label(pd.Timestamp(trip.departure_time))].append(trip)
+        last_driver_batch = max(driver_batches) if driver_batches else None
 
         open_riders: set[int] = set()
+        eligible_riders: set[int] = set()
         outcomes: list[DispatchOutcome] = []
         total_profit = 0.0
         total_wait_min = 0.0
         total_walk_min = 0.0
         total_observability = 0.0
         served_riders = 0
+        drivers_skipped_no_route = 0
 
         for batch_label in sorted(set(driver_batches) | set(request_batches)):
             for rider_id in request_batches.get(batch_label, []):
                 open_riders.add(rider_id)
+                if last_driver_batch is not None and batch_label <= last_driver_batch:
+                    eligible_riders.add(rider_id)
 
             expired = {
                 rider_id
@@ -121,6 +126,7 @@ class RendezvousDispatcher:
                     max_alternatives=self.config.route_alternatives,
                 )
                 if not routes:
+                    drivers_skipped_no_route += 1
                     continue
                 evaluation = evaluate_driver_policies(
                     trip,
@@ -143,7 +149,8 @@ class RendezvousDispatcher:
                     )
                     for rider_id in plan.successful_rider_ids
                 ]
-                open_riders.difference_update(plan.successful_rider_ids)
+                retired_rider_ids = plan.selected_rider_ids if self.config.retire_failed_attempts else plan.successful_rider_ids
+                open_riders.difference_update(retired_rider_ids)
                 total_profit += plan.actual_profit
                 total_wait_min += float(sum(waits))
                 total_walk_min += plan.mean_walk_min * max(plan.attempted_riders, 1)
@@ -165,19 +172,27 @@ class RendezvousDispatcher:
                         mean_walk_min=plan.mean_walk_min,
                         mean_observability=plan.mean_observability,
                         open_requests_before=len(available),
+                        attempted_rider_ids=plan.selected_rider_ids,
+                        successful_rider_ids=plan.successful_rider_ids,
                     )
                 )
 
         launched = len(outcomes)
         attempted_total = sum(outcome.attempted_riders for outcome in outcomes)
+        requested_drivers = len(driver_trips)
+        route_ready_drivers = requested_drivers - drivers_skipped_no_route
         summary = DispatchSummary(
             policy=policy,
             seed=seed,
+            requested_drivers=requested_drivers,
             launched_drivers=launched,
+            drivers_skipped_no_route=drivers_skipped_no_route,
+            route_coverage_rate=route_ready_drivers / max(requested_drivers, 1),
+            eligible_riders=len(eligible_riders),
             served_riders=served_riders,
             total_profit=total_profit,
             profit_per_driver=total_profit / max(launched, 1),
-            service_rate=served_riders / max(len(sampled_riders_df), 1),
+            service_rate=served_riders / max(len(eligible_riders), 1),
             mean_wait_min=total_wait_min / max(served_riders, 1),
             mean_walk_min=total_walk_min / max(attempted_total, 1),
             mean_observability=total_observability / max(attempted_total, 1),

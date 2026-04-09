@@ -68,6 +68,8 @@ class RendezvousEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(evaluation.route_evaluations[0].feasible_opportunity_count, 0)
+        self.assertEqual(evaluation.plans["corridor_only"].attempted_riders, 1)
+        self.assertEqual(evaluation.plans["corridor_only"].successful_riders, 0)
 
     def test_observable_value_is_not_higher_than_nominal_value(self) -> None:
         pickup_lat, pickup_lng = 40.7550, -73.9850
@@ -148,7 +150,7 @@ class RendezvousEvaluatorTests(unittest.TestCase):
         rider_index = RiderIndex(riders, index_bin_minutes=15)
         config = RendezvousConfig(meeting_k_ring=1, occlusion_lambda=0.25)
         route_cells = build_route_anchor_cells(self.route, resolution=9, densify_step_m=80.0)
-        urban_context = UrbanContextIndex.from_frame(
+        poor_context = UrbanContextIndex.from_frame(
             pd.DataFrame(
                 [
                     {
@@ -161,14 +163,34 @@ class RendezvousEvaluatorTests(unittest.TestCase):
                 ]
             )
         )
+        good_context = UrbanContextIndex.from_frame(
+            pd.DataFrame(
+                [
+                    {
+                        "h3_cell": cell,
+                        "urban_clutter_index": 0.05,
+                        "sidewalk_access_score": 0.95,
+                        "building_height_proxy": 0.05,
+                    }
+                    for cell in route_cells
+                ]
+            )
+        )
 
-        baseline = evaluate_driver_policies(self.driver, rider_index, config, routes=[self.route], seed=42)
+        baseline = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            config,
+            routes=[self.route],
+            urban_context=good_context,
+            seed=42,
+        )
         contextual = evaluate_driver_policies(
             self.driver,
             rider_index,
             config,
             routes=[self.route],
-            urban_context=urban_context,
+            urban_context=poor_context,
             seed=42,
         )
 
@@ -208,6 +230,146 @@ class RendezvousEvaluatorTests(unittest.TestCase):
         self.assertGreaterEqual(
             evaluation.plans["rendezvous_only"].nominal_revenue,
             evaluation.plans["rendezvous_observable"].nominal_revenue,
+        )
+
+    def test_time_only_baseline_prefers_shorter_route(self) -> None:
+        riders = pd.DataFrame(
+            [
+                {
+                    "pickup_datetime": pd.Timestamp("2015-04-01 10:00:00"),
+                    "pickup_h3": h3.latlng_to_cell(40.7550, -73.9850, 9),
+                    "dropoff_h3": h3.latlng_to_cell(40.7690, -73.9710, 9),
+                    "pickup_lat": 40.7550,
+                    "pickup_lng": -73.9850,
+                    "dropoff_lat": 40.7690,
+                    "dropoff_lng": -73.9710,
+                    "passenger_count": 1,
+                    "fare_amount": 18.0,
+                }
+            ]
+        )
+        shorter_route = RouteInfo(
+            polyline=((40.7500, -73.9900), (40.7590, -73.9810), (40.7700, -73.9700)),
+            distance_m=1800.0,
+            duration_s=500.0,
+        )
+        rider_index = RiderIndex(riders, index_bin_minutes=15)
+        config = RendezvousConfig(meeting_k_ring=1)
+
+        evaluation = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            config,
+            routes=[self.route, shorter_route],
+            seed=42,
+        )
+
+        self.assertEqual(evaluation.plans["time_only_baseline"].route_idx, 1)
+
+    def test_feasible_count_baseline_prefers_route_with_more_feasible_opportunities(self) -> None:
+        riders = pd.DataFrame(
+            [
+                {
+                    "pickup_datetime": pd.Timestamp("2015-04-01 10:00:00"),
+                    "pickup_h3": h3.latlng_to_cell(40.7550, -73.9850, 9),
+                    "dropoff_h3": h3.latlng_to_cell(40.7690, -73.9710, 9),
+                    "pickup_lat": 40.7550,
+                    "pickup_lng": -73.9850,
+                    "dropoff_lat": 40.7690,
+                    "dropoff_lng": -73.9710,
+                    "passenger_count": 1,
+                    "fare_amount": 18.0,
+                },
+                {
+                    "pickup_datetime": pd.Timestamp("2015-04-01 10:00:00"),
+                    "pickup_h3": h3.latlng_to_cell(40.7650, -73.9750, 9),
+                    "dropoff_h3": h3.latlng_to_cell(40.7720, -73.9680, 9),
+                    "pickup_lat": 40.7650,
+                    "pickup_lng": -73.9750,
+                    "dropoff_lat": 40.7720,
+                    "dropoff_lng": -73.9680,
+                    "passenger_count": 1,
+                    "fare_amount": 17.0,
+                },
+            ]
+        )
+        detour_route = RouteInfo(
+            polyline=((40.7500, -73.9900), (40.7520, -73.9880), (40.7540, -73.9860)),
+            distance_m=1600.0,
+            duration_s=420.0,
+        )
+        rider_index = RiderIndex(riders, index_bin_minutes=15)
+        config = RendezvousConfig(meeting_k_ring=1)
+
+        evaluation = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            config,
+            routes=[self.route, detour_route],
+            seed=42,
+        )
+
+        self.assertEqual(evaluation.plans["feasible_count_baseline"].route_idx, 0)
+
+    def test_observability_ablation_can_raise_observable_value_in_cluttered_context(self) -> None:
+        pickup_lat, pickup_lng = 40.7550, -73.9850
+        riders = pd.DataFrame(
+            [
+                {
+                    "pickup_datetime": pd.Timestamp("2015-04-01 10:00:00"),
+                    "pickup_h3": h3.latlng_to_cell(pickup_lat, pickup_lng, 9),
+                    "dropoff_h3": h3.latlng_to_cell(40.7690, -73.9710, 9),
+                    "pickup_lat": pickup_lat,
+                    "pickup_lng": pickup_lng,
+                    "dropoff_lat": 40.7690,
+                    "dropoff_lng": -73.9710,
+                    "passenger_count": 1,
+                    "fare_amount": 18.0,
+                }
+            ]
+        )
+        rider_index = RiderIndex(riders, index_bin_minutes=15)
+        route_cells = build_route_anchor_cells(self.route, resolution=9, densify_step_m=80.0)
+        cluttered_context = UrbanContextIndex.from_frame(
+            pd.DataFrame(
+                [
+                    {
+                        "h3_cell": cell,
+                        "urban_clutter_index": 0.95,
+                        "sidewalk_access_score": 0.05,
+                        "building_height_proxy": 0.85,
+                    }
+                    for cell in route_cells
+                ]
+            )
+        )
+        full_config = RendezvousConfig(meeting_k_ring=1, occlusion_lambda=0.4, observability_ablation="full")
+        ablated_config = RendezvousConfig(
+            meeting_k_ring=1,
+            occlusion_lambda=0.4,
+            observability_ablation="no_clutter",
+        )
+
+        full_eval = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            full_config,
+            routes=[self.route],
+            urban_context=cluttered_context,
+            seed=42,
+        )
+        ablated_eval = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            ablated_config,
+            routes=[self.route],
+            urban_context=cluttered_context,
+            seed=42,
+        )
+
+        self.assertGreaterEqual(
+            ablated_eval.route_evaluations[0].observable_route_value,
+            full_eval.route_evaluations[0].observable_route_value,
         )
 
 

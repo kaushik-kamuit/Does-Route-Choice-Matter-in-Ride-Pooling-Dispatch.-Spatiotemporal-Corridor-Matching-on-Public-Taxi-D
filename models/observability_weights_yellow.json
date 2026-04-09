@@ -1,0 +1,59 @@
+{
+  "domain": "yellow",
+  "dataset_path": "K:\\Kamuit\\Uber_Logic\\Research_paper_2\\data\\ml\\yellow\\rendezvous_meeting_point_dataset.parquet",
+  "grid_step": 0.05,
+  "weights": {
+    "straightness": 0.2,
+    "turn": 0.30000000000000004,
+    "ambiguity": 0.30000000000000004,
+    "clutter": 0.2
+  },
+  "metrics": {
+    "equal": {
+      "train": {
+        "n_rows": 13731,
+        "mean_prediction": 0.8376044525899112,
+        "mean_observed": 0.8384677008229554,
+        "brier": 0.13454941209757926,
+        "roc_auc": 0.5612850945068018
+      },
+      "valid": {
+        "n_rows": 4492,
+        "mean_prediction": 0.8371362658315359,
+        "mean_observed": 0.8328138913624221,
+        "brier": 0.13821774612241775,
+        "roc_auc": 0.5656850297794156
+      },
+      "test": {
+        "n_rows": 1575,
+        "mean_prediction": 0.8346703830985575,
+        "mean_observed": 0.8368253968253968,
+        "brier": 0.1363600986667376,
+        "roc_auc": 0.5347862283969935
+      }
+    },
+    "calibrated": {
+      "train": {
+        "n_rows": 13731,
+        "mean_prediction": 0.8378481241888485,
+        "mean_observed": 0.8384677008229554,
+        "brier": 0.1345272610784592,
+        "roc_auc": 0.5629842166110572
+      },
+      "valid": {
+        "n_rows": 4492,
+        "mean_prediction": 0.8372135921529149,
+        "mean_observed": 0.8328138913624221,
+        "brier": 0.1382341467669884,
+        "roc_auc": 0.5642119871535449
+      },
+      "test": {
+        "n_rows": 1575,
+        "mean_prediction": 0.8346932550301036,
+        "mean_observed": 0.8368253968253968,
+        "brier": 0.1363431399882467,
+        "roc_auc": 0.5403187236881728
+      }
+    }
+  }
+}

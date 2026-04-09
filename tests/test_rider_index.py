@@ -111,6 +111,25 @@ class RiderIndexTimingTests(unittest.TestCase):
 
         self.assertEqual(result["rider_id"].tolist(), [1])
 
+    def test_pickup_only_mode_keeps_off_corridor_dropoff(self) -> None:
+        riders = pd.DataFrame(
+            [
+                _rider_row(1, "2015-04-01 10:02:00", pickup_h3="pu_cell", dropoff_h3="outside"),
+            ]
+        )
+        index = RiderIndex(riders, index_bin_minutes=15)
+
+        result = index.find_in_corridor(
+            {"pu_cell"},
+            minute_of_day=10 * 60,
+            window_bins=1,
+            max_request_offset_min=5,
+            query_datetime=pd.Timestamp("2015-04-01 10:00:00"),
+            require_dropoff_in_corridor=False,
+        )
+
+        self.assertEqual(result["rider_id"].tolist(), [1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,8 @@ Paper-facing figures are written to:
 - `figures/rendezvous_fig4_dispatch.png`
 - `figures/rendezvous_fig5_ml_comparator.png`
 - `figures/rendezvous_fig6_sensitivity.png`
+- `figures/rendezvous_fig7_strong_baselines.png`
+- `figures/rendezvous_fig8_context_ablation.png`
 
 Generate them from the repo root with:
 

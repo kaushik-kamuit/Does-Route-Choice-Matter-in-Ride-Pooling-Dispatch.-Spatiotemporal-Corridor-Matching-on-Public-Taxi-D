@@ -3,8 +3,9 @@ Spatial-temporal index over rider trips for fast corridor lookups.
 
 Instead of scanning all ~10M riders per corridor query, this index
 maps H3 cells to rider row indices. A corridor query does O(corridor_cells)
-dict lookups and returns only the riders whose pickup AND dropoff fall
-within the corridor and whose time is compatible.
+    dict lookups and returns only the riders whose pickup falls within the
+    corridor, optionally requiring the dropoff to do the same, and whose
+    time is compatible.
 
 The index uses coarse temporal bins for speed, but callers can also apply
 an exact post-retrieval request-offset filter in minutes. This keeps the
@@ -123,6 +124,7 @@ class RiderIndex:
         window_bins: int = 1,
         max_request_offset_min: int | None = None,
         query_datetime: datetime | pd.Timestamp | None = None,
+        require_dropoff_in_corridor: bool = True,
     ) -> pd.DataFrame:
         subset, _ = self.find_in_corridor_with_stats(
             corridor_cells,
@@ -130,6 +132,7 @@ class RiderIndex:
             window_bins=window_bins,
             max_request_offset_min=max_request_offset_min,
             query_datetime=query_datetime,
+            require_dropoff_in_corridor=require_dropoff_in_corridor,
         )
         return subset
 
@@ -140,10 +143,12 @@ class RiderIndex:
         window_bins: int = 1,
         max_request_offset_min: int | None = None,
         query_datetime: datetime | pd.Timestamp | None = None,
+        require_dropoff_in_corridor: bool = True,
     ) -> tuple[pd.DataFrame, CorridorLookupStats]:
         """
-        Find riders whose pickup AND dropoff are both inside the corridor
-        and whose index bin is within [bin - window, bin + window].
+        Find riders whose pickup is inside the corridor and whose index bin is
+        within [bin - window, bin + window]. Optionally require the dropoff to
+        be inside the corridor as well.
 
         Args:
             minute_of_day: Driver's departure minute (0-1439). Converted
@@ -184,21 +189,30 @@ class RiderIndex:
         if pickup_arr.size == 0:
             return self._riders.iloc[0:0], CorridorLookupStats(0, 0, 0, 0)
 
-        dropoff_arr = self._gather_indices_np(corridor_cells, self._dropoff_idx, buckets)
-        if dropoff_arr.size == 0:
-            return self._riders.iloc[0:0], CorridorLookupStats(int(pickup_arr.size), 0, 0, 0)
+        if require_dropoff_in_corridor:
+            dropoff_arr = self._gather_indices_np(corridor_cells, self._dropoff_idx, buckets)
+            if dropoff_arr.size == 0:
+                return self._riders.iloc[0:0], CorridorLookupStats(int(pickup_arr.size), 0, 0, 0)
 
-        both = np.intersect1d(pickup_arr, dropoff_arr)
-        if both.size == 0:
-            return self._riders.iloc[0:0], CorridorLookupStats(int(pickup_arr.size), int(dropoff_arr.size), 0, 0)
+            candidate_arr = np.intersect1d(pickup_arr, dropoff_arr)
+            if candidate_arr.size == 0:
+                return self._riders.iloc[0:0], CorridorLookupStats(int(pickup_arr.size), int(dropoff_arr.size), 0, 0)
 
-        subset = self._riders.iloc[both]
-        base_stats = CorridorLookupStats(
-            pickup_bucket_hits=int(pickup_arr.size),
-            dropoff_bucket_hits=int(dropoff_arr.size),
-            corridor_joint_candidates=int(both.size),
-            exact_time_eligible=int(both.size),
-        )
+            subset = self._riders.iloc[candidate_arr]
+            base_stats = CorridorLookupStats(
+                pickup_bucket_hits=int(pickup_arr.size),
+                dropoff_bucket_hits=int(dropoff_arr.size),
+                corridor_joint_candidates=int(candidate_arr.size),
+                exact_time_eligible=int(candidate_arr.size),
+            )
+        else:
+            subset = self._riders.iloc[pickup_arr]
+            base_stats = CorridorLookupStats(
+                pickup_bucket_hits=int(pickup_arr.size),
+                dropoff_bucket_hits=0,
+                corridor_joint_candidates=int(pickup_arr.size),
+                exact_time_eligible=int(pickup_arr.size),
+            )
         if max_request_offset_min is None:
             return subset, base_stats
 

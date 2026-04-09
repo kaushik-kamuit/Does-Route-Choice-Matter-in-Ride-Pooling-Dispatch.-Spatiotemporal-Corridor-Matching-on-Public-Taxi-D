@@ -15,7 +15,7 @@
 \maketitle
 
 \begin{abstract}
-This paper studies route choice in urban ride-pooling through route-induced rendezvous opportunities. Instead of valuing a route only by the riders who lie near its corridor, the method values the route by the feasible and observable meeting opportunities it creates. The paper's central claim is that urban occlusion changes route value in a structured way: some common meeting opportunities are easier to coordinate and more reliable than others, so route choice should optimize over feasible and observable rendezvous opportunities rather than proximity alone. The manuscript package on this branch is intentionally separate from earlier route-choice work and is paired only with the \texttt{rendezvous\_*} result namespace.
+This paper studies route choice in urban ride-pooling through route-induced rendezvous opportunities. Rather than valuing a route only by riders who lie near its corridor, the proposed method values the route by the feasible and observable common meeting opportunities it creates. The implementation combines NYC TLC Yellow demand with official NYC street centerline, sidewalk centerline, building footprint, PLUTO, and elevation layers aggregated to H3 to construct a reproducible urban-context proxy for occlusion. The evaluation further calibrates the observability weights on non-test meeting-point data and adds a time-slice robustness layer in the hardest regime. Across a controlled single-driver study and a secondary rolling-dispatch validation, the pattern is consistent: corridor-only valuation is weakest, rendezvous-aware valuation is substantially stronger, and observability-aware valuation is the best deterministic policy in the headline sparse high-occlusion regime. The corridor-only baseline also exhibits a much larger nominal-versus-realized gap than the rendezvous-aware policies, supporting the paper's central claim that feasible and observable rendezvous opportunities are the right primitive for route evaluation.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -23,19 +23,200 @@ ride-pooling, rendezvous, route choice, urban occlusion, meeting-point selection
 \end{IEEEkeywords}
 
 \section{Introduction}
-Routes expose different sets of common meeting opportunities. In dense urban settings, those opportunities differ not only in accessibility but also in observability and pickup reliability. This paper reframes route choice around that distinction.
+Route-aware ride-pooling methods typically value a route by the riders exposed along its corridor \cite{santi2014,alonso2017}. Meeting-point work shows that shared pickup flexibility can improve pooled mobility \cite{stiglic2016}, but the main decision object in many route-aware systems is still the near-route rider rather than the route-induced meeting opportunity. This paper argues that this is the wrong primitive in dense urban settings.
+
+The central observation is straightforward: a route is valuable not only because it passes near requests, but because it exposes a structured set of possible rendezvous opportunities. Those opportunities vary in two ways. First, they differ in feasibility: a rider may be near a route yet still lack a workable common meeting point under walk, timing, and downstream trip constraints. Second, they differ in observability: some feasible meeting opportunities are easier to coordinate and more reliable under urban morphology than others.
+
+This work operationalizes that idea as a systems and decision-making contribution rather than a sensor-physics contribution. The goal is not to solve urban perception in full generality, but to show that route value changes in a structured way once route-induced rendezvous feasibility and observability are made explicit.
+
+The paper makes three claims:
+\begin{enumerate}
+\item corridor-only route valuation substantially overstates apparent service value;
+\item rendezvous feasibility is the main jump in realized performance;
+\item observability-aware rendezvous valuation is especially useful in sparse, high-occlusion regimes.
+\end{enumerate}
 
 \section{Method}
-The method compares three route-valuation views: corridor-only exposure, rendezvous feasibility, and observability-aware rendezvous valuation. Meeting opportunities are represented by route anchor cells and evaluated with a proxy-first observability model. The current branch augments NYC TLC demand data with official NYC Centerline, Sidewalk Centerline, Building Footprints, PLUTO, and Elevation Points layers aggregated to H3 to provide a reproducible urban-context signal for occlusion-aware routing.
+\subsection{Three Route-Valuation Views}
+For each driver trip, the system evaluates multiple feasible road routes returned by OSRM. Each route is converted into an H3 corridor and an ordered sequence of route anchor cells. The method then compares three route-valuation views:
+\begin{enumerate}
+\item \textbf{Corridor-only}: routes are valued by nearby rider exposure only.
+\item \textbf{Rendezvous-only}: routes are valued by feasible common meeting opportunities.
+\item \textbf{Rendezvous + observability}: routes are valued by feasible opportunities discounted by pickup reliability under occlusion.
+\end{enumerate}
 
-\section{Experiments}
-The primary evidence layer is a controlled single-driver route-choice study. Rolling dispatch is used as a secondary validation layer. The branch writes all paper-facing outputs to the \texttt{results/rendezvous\_*} namespace.
+The route corridor is built at H3 resolution 9 with corridor expansion radius $k=1$. Candidate riders are retrieved by pickup proximity and exact request-time compatibility. Meeting opportunities are then generated from ordered route anchor cells. A rider-anchor pair is feasible only if:
+\begin{enumerate}
+\item the rider lies within the meeting neighborhood of that anchor,
+\item the implied walk time is at most 6 minutes,
+\item the driver still retains enough downstream trip value after interception.
+\end{enumerate}
+
+\subsection{Observability Proxy}
+Each feasible rendezvous opportunity receives an observability score built from route-local and urban-context signals:
+\begin{enumerate}
+\item local route straightness,
+\item local turn severity,
+\item anchor ambiguity,
+\item anchor clutter,
+\item sidewalk-access proxy,
+\item building-height and urban-clutter proxies.
+\end{enumerate}
+
+The urban-context layer is aggregated from official NYC Centerline, Sidewalk Centerline, Building Footprints, PLUTO, and Elevation Points datasets. The current branch downloads those layers directly and aggregates them to H3, producing a reproducible route-anchor context table rather than relying on ad hoc handcrafted examples.
+
+Observability is then converted into a pickup success probability and used to compute expected route value. In the calibrated profile used in the current results, straightness and clutter receive weight 0.20 each, while turn severity and ambiguity receive weight 0.30 each. The implementation also keeps a corridor-only baseline that can attempt corridor-near riders even when no feasible rendezvous anchor exists, which is important for exposing the nominal-versus-realized gap rather than masking it.
+
+\subsection{Policies}
+The implementation evaluates seven policies:
+\begin{enumerate}
+\item \texttt{corridor\_only},
+\item \texttt{time\_only\_baseline},
+\item \texttt{feasible\_count\_baseline},
+\item \texttt{walk\_aware\_rendezvous},
+\item \texttt{rendezvous\_only},
+\item \texttt{rendezvous\_observable},
+\item \texttt{ml\_meeting\_point\_comparator}.
+\end{enumerate}
+
+The first four policies are the stronger non-ML baselines added in the Q1-upgrade pass. They matter because the paper no longer wins only against a weak corridor baseline; it also wins against shortest-route, feasible-count, and walk-aware rendezvous baselines. The ML policy is intentionally secondary. It learns to emulate the proxy-based meeting-point ranking from lower-level geometry and context features, but it is not the main scientific contribution.
+
+\section{Experimental Setup}
+\subsection{Data and Scenarios}
+The primary demand source is NYC TLC Yellow data. The observability layer augments that demand with official NYC urban-context layers aggregated to H3. The headline evidence comes from four all-day scenarios:
+\begin{enumerate}
+\item \textbf{Primary}: density 100, occlusion $\lambda=0.25$,
+\item \textbf{Sparse high occlusion}: density 25, occlusion $\lambda=0.40$,
+\item \textbf{Very sparse low occlusion}: density 10, occlusion $\lambda=0.10$,
+\item \textbf{Very sparse extreme occlusion}: density 10, occlusion $\lambda=0.55$.
+\end{enumerate}
+
+The controlled single-driver study uses 500 sampled test drivers and 5 seeds per all-day scenario. After repairing route-cache flushing and backfilling the sampled routes, all four single-driver scenarios now run at full route coverage (500/500 drivers, coverage rate 1.0). Rolling dispatch is used only as secondary systems validation. Because the repaired dispatch model now retires failed attempts and is substantially heavier than the single-driver study, the branch uses 500 drivers and 5 seeds for primary dispatch and 250 drivers and 3 seeds for the other all-day dispatch scenarios. A robustness layer then re-runs the sparse high-occlusion regime in morning peak (07:00--10:00) and evening peak (16:00--19:00) slices.
+
+\subsection{What Changed in the Repaired Pipeline}
+The current evidence reflects a repaired implementation rather than the earlier draft stack. The most important repairs are:
+\begin{enumerate}
+\item full paged urban-context downloads rather than first-page samples only,
+\item pickup-centric candidate retrieval rather than requiring both pickup and dropoff to lie in the corridor,
+\item a true corridor-only realized baseline,
+\item retirement of failed attempts in dispatch,
+\item explicit route-coverage reporting,
+\item optimal small-capacity seat packing instead of greedy selection.
+\end{enumerate}
 
 \section{Results}
-Populate this section from the outputs generated by \texttt{scripts/run\_rendezvous\_artifact.py}, \texttt{scripts/run\_rendezvous\_dispatch.py}, and \texttt{scripts/summarize\_rendezvous\_results.py}.
+\subsection{Single-Driver Route Choice}
+Figure~\ref{fig:primary} shows the main primary comparison, while Figure~\ref{fig:strongbaselines} adds the stronger baseline set with bootstrap confidence intervals. In the primary calibrated all-day regime, \texttt{corridor\_only} achieves mean actual profit 6.76, \texttt{time\_only\_baseline} reaches 16.03, \texttt{feasible\_count\_baseline} reaches 17.12, \texttt{walk\_aware\_rendezvous} reaches 17.30, \texttt{rendezvous\_only} reaches 17.60, and \texttt{rendezvous\_observable} reaches 17.57. The corridor baseline also has a dramatically larger nominal-versus-realized gap: 23.55 versus about 4.8--4.9 for the rendezvous-aware variants.
+
+This nominal-versus-realized gap is one of the clearest pieces of evidence in the paper. It shows that corridor exposure alone materially overcounts serviceable value.
+
+In the paper's headline regime, sparse high occlusion, the deterministic observability-aware policy is best: \texttt{corridor\_only} scores 0.59, \texttt{time\_only\_baseline} scores 4.08, \texttt{feasible\_count\_baseline} scores 5.20, \texttt{walk\_aware\_rendezvous} scores 5.40, \texttt{rendezvous\_only} scores 5.52, and \texttt{rendezvous\_observable} scores 5.72. The improvement over the corridor baseline is +5.13 mean actual profit, and the improvement over deterministic rendezvous-only valuation is +0.20. The paired bootstrap interval for the deterministic observability-over-rendezvous-only delta still overlaps zero, so the strongest honest interpretation is regime-dependent advantage rather than universal dominance. Even so, the harder baseline ranking is exactly what the Q1-oriented version of the paper needed: the hard-regime ordering survives after adding plausible competitor policies.
+
+The new time-slice robustness check in Figure~\ref{fig:timeslice} sharpens that interpretation. In sparse high occlusion during morning peak, \texttt{rendezvous\_observable} reaches 4.10 while \texttt{rendezvous\_only} reaches 3.76. In evening peak, the two are nearly tied at 7.60 and 7.62. This is exactly the kind of regime-dependent behavior the paper claims: the harder temporal slice benefits more from observability-aware valuation.
+
+The boundary cases are also informative. In the very sparse low-occlusion regime, \texttt{rendezvous\_only} is only marginally ahead of \texttt{rendezvous\_observable} (0.50 versus 0.49), and \texttt{walk\_aware\_rendezvous} is slightly better than both. In the very sparse extreme-occlusion regime, \texttt{rendezvous\_only} again narrowly edges out \texttt{rendezvous\_observable} (-1.28 versus -1.32). These are not contradictions; they show that the observability layer is not uniformly dominant and should be framed as regime-dependent rather than universal.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig1_concept.png}
+\caption{Conceptual view of route-induced rendezvous opportunities. The route corridor exposes rider requests, feasible anchors refine that exposure, and observable anchors preserve value under urban occlusion.}
+\label{fig:concept}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig2_primary.png}
+\caption{Primary single-driver comparison. The main jump is from corridor-only valuation to rendezvous-aware valuation.}
+\label{fig:primary}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig3_gap.png}
+\caption{Nominal versus realized service gap in the primary regime. The corridor-only baseline substantially overstates realized service value.}
+\label{fig:gap}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig7_strong_baselines.png}
+\caption{Stronger baseline comparison with bootstrap 95\% intervals. The rendezvous-aware policies remain strongest in the primary and sparse high-occlusion regimes even after adding shortest-route, feasible-count, and walk-aware competitor baselines.}
+\label{fig:strongbaselines}
+\end{figure}
+
+\subsection{Dispatch Validation}
+Figure~\ref{fig:dispatch} shows that the same qualitative ordering survives in rolling dispatch. In primary dispatch, \texttt{corridor\_only} yields mean profit per driver 3.87, \texttt{time\_only\_baseline} yields 10.51, \texttt{feasible\_count\_baseline} yields 11.53, \texttt{walk\_aware\_rendezvous} yields 11.81, \texttt{rendezvous\_only} yields 12.10, and \texttt{rendezvous\_observable} yields 12.19. In sparse high occlusion, the gap is again clear: -2.67 for corridor-only, -0.97 for time-only, 0.37 for feasible-count, 0.41 for walk-aware, 0.57 for rendezvous-only, and 0.57 for rendezvous-observable.
+
+The repaired dispatch pipeline matters here. Once failed pickup attempts are retired rather than repeatedly retried, the systems result becomes more trustworthy and still supports the paper's core deterministic story. The robustness slice is again helpful: in morning-peak sparse high occlusion, \texttt{rendezvous\_observable} improves profit per driver from -4.85 for corridor-only to -2.08, outperforming \texttt{rendezvous\_only} at -2.53.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig4_dispatch.png}
+\caption{Dispatch validation in the primary and sparse high-occlusion regimes. The observability-aware deterministic policy is strongest in the headline hard regime.}
+\label{fig:dispatch}
+\end{figure}
+
+\subsection{ML Comparator and Sensitivity}
+The ML comparator is competitive and often strongest overall, but it should remain a secondary comparison. In the repaired pipeline, the comparator is proxy-trained and the held-out observed-success diagnostics remain modest even after enlarging the dataset and calibrating the observability profile (validation ROC AUC 0.65, test ROC AUC 0.56). The non-test calibration improves test Brier score slightly (0.13636 to 0.13634) and test ROC AUC slightly (0.5348 to 0.5403), but not enough to change the scientific center of gravity of the paper.
+
+Figure~\ref{fig:ml} compares the deterministic observability-aware policy against the ML comparator in the primary and sparse high-occlusion regimes. Figure~\ref{fig:contextablation} shows the urban-context ablation in the headline hard regime. Figure~\ref{fig:timeslice} shows the time-slice robustness view, and Figure~\ref{fig:sensitivity} shows the very-sparse sensitivity sweep. The urban-context ablation is the cleanest observability-specific evidence in the current stack: turning urban context off lowers the performance of the rendezvous-aware policies in sparse high occlusion. The very-sparse sensitivity figure is useful precisely because it is not uniformly favorable to observability-aware routing; it shows that the stronger claim is regime dependence, not universal dominance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig5_ml_comparator.png}
+\caption{Deterministic observability-aware ranking versus the ML comparator. The ML variant is competitive, but the paper should still center the deterministic policy.}
+\label{fig:ml}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig6_sensitivity.png}
+\caption{Occlusion sensitivity in very sparse demand. The observability layer is useful but not uniformly best in every extreme boundary case.}
+\label{fig:sensitivity}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig8_context_ablation.png}
+\caption{Urban-context ablation in sparse high occlusion. Disabling urban context lowers performance for the rendezvous-aware policies, supporting the value of the observability layer without overclaiming component-level calibration.}
+\label{fig:contextablation}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/rendezvous_fig9_time_slice_robustness.png}
+\caption{Time-slice robustness in sparse high occlusion. Morning peak is harsher than all-day and evening peak, and the observability-aware deterministic policy is strongest in that harder slice.}
+\label{fig:timeslice}
+\end{figure}
+
+\begin{table}[t]
+\caption{Headline deterministic policy comparison}
+\label{tab:headline}
+\centering
+\begin{tabularx}{\columnwidth}{lXXXX}
+\toprule
+Setting & Corridor only & Rendezvous only & Rendezvous + obs. & Best deterministic \\
+\midrule
+Single-driver primary & 6.76 & 17.60 & 17.57 & Rendezvous only \\
+Single-driver sparse high occ. & 0.59 & 5.52 & 5.72 & Rendezvous + obs. \\
+Dispatch primary & 3.87 & 12.10 & 12.19 & Rendezvous + obs. \\
+Dispatch sparse high occ. & -2.67 & 0.57 & 0.57 & Rendezvous + obs. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Limitations}
+The current branch still has limits that should be stated explicitly.
+\begin{enumerate}
+\item The observability layer is a proxy model, not a full physical sensing model.
+\item The observability calibration is only modestly better than equal weighting; it should be viewed as a discipline-improving step rather than decisive proof of optimal weighting.
+\item The ML comparator is proxy-trained and should not be oversold.
+\item Dispatch service rates are necessarily tiny because the denominator is the full eligible request pool, while the number of launched drivers in validation runs is intentionally limited.
+\item The strongest deterministic evidence appears in sparse high occlusion, not in every extreme regime.
+\end{enumerate}
 
 \section{Conclusion}
-The implementation on this branch is designed to support a publishable paper whose primitive is feasible and observable rendezvous opportunities rather than near-route riders.
+The repaired codebase supports a clearer and stronger paper than the earlier draft state. The main empirical pattern is now stable: corridor-only route valuation is the wrong primitive; feasible rendezvous opportunities are the main improvement; and an observability-aware version of rendezvous valuation is especially helpful in sparse, high-occlusion regimes. That hard-regime advantage now survives stronger baselines, urban-context ablation, and time-slice robustness checks. This is a publishable systems story, provided the manuscript keeps the claims disciplined and honest about the boundary cases.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

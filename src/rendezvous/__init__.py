@@ -10,7 +10,7 @@ from .data_types import (
 )
 from .dispatch import RendezvousDispatcher
 from .evaluator import ALL_POLICIES, evaluate_driver_policies
-from .selectors import DeterministicMeetingPointSelector, MLMeetingPointSelector
+from .selectors import DeterministicMeetingPointSelector, MLMeetingPointSelector, WalkAwareMeetingPointSelector
 from .urban_context import UrbanContextFeatures, UrbanContextIndex
 
 __all__ = [
@@ -29,4 +29,5 @@ __all__ = [
     "RouteOpportunityEvaluation",
     "UrbanContextFeatures",
     "UrbanContextIndex",
+    "WalkAwareMeetingPointSelector",
 ]

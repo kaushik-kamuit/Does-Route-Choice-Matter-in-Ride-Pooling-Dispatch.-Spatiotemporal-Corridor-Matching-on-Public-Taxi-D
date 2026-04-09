@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -11,7 +13,69 @@ class ObservabilityWeights:
     clutter: float = 0.25
 
 
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WEIGHTS = ObservabilityWeights()
+
+
+def weights_for_mode(mode: str, base_weights: ObservabilityWeights | None = None) -> ObservabilityWeights:
+    key = (mode or "full").strip().lower()
+    base = base_weights or DEFAULT_WEIGHTS
+    if key == "full":
+        return base
+    if key == "no_straightness":
+        return ObservabilityWeights(
+            straightness=0.0,
+            turn=base.turn,
+            ambiguity=base.ambiguity,
+            clutter=base.clutter,
+        )
+    if key == "no_turn":
+        return ObservabilityWeights(
+            straightness=base.straightness,
+            turn=0.0,
+            ambiguity=base.ambiguity,
+            clutter=base.clutter,
+        )
+    if key == "no_ambiguity":
+        return ObservabilityWeights(
+            straightness=base.straightness,
+            turn=base.turn,
+            ambiguity=0.0,
+            clutter=base.clutter,
+        )
+    if key == "no_clutter":
+        return ObservabilityWeights(
+            straightness=base.straightness,
+            turn=base.turn,
+            ambiguity=base.ambiguity,
+            clutter=0.0,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported observability ablation '{mode}'. Expected one of: full, no_ambiguity, no_clutter, no_straightness, no_turn"
+        )
+
+
+def weights_for_profile(profile: str, *, domain: str) -> ObservabilityWeights:
+    key = (profile or "equal").strip().lower()
+    if key == "equal":
+        return DEFAULT_WEIGHTS
+    if key == "calibrated":
+        return _load_calibrated_weights(domain)
+    raise ValueError(f"Unsupported observability profile '{profile}'. Expected one of: calibrated, equal")
+
+
+def _load_calibrated_weights(domain: str) -> ObservabilityWeights:
+    path = ROOT / "models" / f"observability_weights_{domain}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Calibrated observability weights not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return ObservabilityWeights(
+        straightness=float(payload["weights"]["straightness"]),
+        turn=float(payload["weights"]["turn"]),
+        ambiguity=float(payload["weights"]["ambiguity"]),
+        clutter=float(payload["weights"]["clutter"]),
+    )
 
 
 def compute_observability_score(
