@@ -177,6 +177,39 @@ class RendezvousEvaluatorTests(unittest.TestCase):
             baseline.route_evaluations[0].observable_route_value,
         )
 
+    def test_rendezvous_only_uses_nominal_selector(self) -> None:
+        pickup_lat, pickup_lng = 40.7550, -73.9850
+        riders = pd.DataFrame(
+            [
+                {
+                    "pickup_datetime": pd.Timestamp("2015-04-01 10:00:00"),
+                    "pickup_h3": h3.latlng_to_cell(pickup_lat, pickup_lng, 9),
+                    "dropoff_h3": h3.latlng_to_cell(40.7690, -73.9710, 9),
+                    "pickup_lat": pickup_lat,
+                    "pickup_lng": pickup_lng,
+                    "dropoff_lat": 40.7690,
+                    "dropoff_lng": -73.9710,
+                    "passenger_count": 1,
+                    "fare_amount": 18.0,
+                }
+            ]
+        )
+        rider_index = RiderIndex(riders, index_bin_minutes=15)
+        config = RendezvousConfig(meeting_k_ring=1, occlusion_lambda=0.8)
+
+        evaluation = evaluate_driver_policies(
+            self.driver,
+            rider_index,
+            config,
+            routes=[self.route],
+            seed=42,
+        )
+
+        self.assertGreaterEqual(
+            evaluation.plans["rendezvous_only"].nominal_revenue,
+            evaluation.plans["rendezvous_observable"].nominal_revenue,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

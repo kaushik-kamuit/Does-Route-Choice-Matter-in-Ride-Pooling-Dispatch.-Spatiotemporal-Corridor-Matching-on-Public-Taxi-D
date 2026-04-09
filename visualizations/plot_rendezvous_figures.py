@@ -82,37 +82,82 @@ def fig4_dispatch() -> None:
     df = _load(RESULTS_DIR / "rendezvous_dispatch_policy_summary.csv")
     if df is None or df.empty:
         return
-    fig, ax = plt.subplots(figsize=(5.8, 3.0))
-    ax.bar(df["policy"], df["mean_profit_per_driver"], color="#0d6efd")
+    focus = df[df["scenario_name"].isin(["primary", "sparse_high_occlusion"])].copy()
+    if focus.empty:
+        focus = df.copy()
+    policies = [policy for policy in ["corridor_only", "rendezvous_only", "rendezvous_observable", "ml_meeting_point_comparator"] if policy in set(focus["policy"])]
+    scenarios = list(dict.fromkeys(focus["scenario_name"].tolist()))
+
+    fig, ax = plt.subplots(figsize=(7.2, 3.4))
+    x = np.arange(len(scenarios))
+    width = 0.18 if len(policies) >= 4 else 0.22
+    colors = {
+        "corridor_only": "#6c757d",
+        "rendezvous_only": "#198754",
+        "rendezvous_observable": "#0d6efd",
+        "ml_meeting_point_comparator": "#dc3545",
+    }
+    offsets = np.linspace(-width * (len(policies) - 1) / 2.0, width * (len(policies) - 1) / 2.0, len(policies))
+    for offset, policy in zip(offsets, policies):
+        values = []
+        for scenario in scenarios:
+            sub = focus[(focus["scenario_name"] == scenario) & (focus["policy"] == policy)]
+            values.append(float(sub["mean_profit_per_driver"].iloc[0]) if not sub.empty else np.nan)
+        ax.bar(x + offset, values, width=width, label=policy, color=colors[policy])
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([scenario.replace("_", "\n") for scenario in scenarios])
     ax.set_ylabel("Mean profit per driver")
-    ax.set_title("Dispatch validation")
-    ax.tick_params(axis="x", rotation=20)
+    ax.set_title("Dispatch validation in primary and hard regimes")
+    ax.legend(frameon=False, fontsize=8)
     _save(fig, "rendezvous_fig4_dispatch.png")
 
 
 def fig5_ml_comparator() -> None:
-    df = _load(RESULTS_DIR / "rendezvous_meeting_point_comparison.csv")
+    df = _load(RESULTS_DIR / "rendezvous_policy_summary.csv")
     if df is None or df.empty:
         return
-    fig, ax = plt.subplots(figsize=(5.8, 3.0))
-    ax.bar(df["policy"], df["mean_successful_riders"], color=["#198754", "#dc3545"][: len(df)])
-    ax.set_ylabel("Mean successful riders")
-    ax.set_title("Deterministic vs ML meeting-point selection")
-    ax.tick_params(axis="x", rotation=20)
+    focus = df[
+        df["scenario_name"].isin(["primary", "sparse_high_occlusion"])
+        & df["policy"].isin(["rendezvous_observable", "ml_meeting_point_comparator"])
+    ].copy()
+    if focus.empty:
+        return
+    scenarios = list(dict.fromkeys(focus["scenario_name"].tolist()))
+    fig, ax = plt.subplots(figsize=(6.4, 3.2))
+    x = np.arange(len(scenarios))
+    width = 0.28
+    for offset, policy, color in [
+        (-width / 2.0, "rendezvous_observable", "#0d6efd"),
+        (width / 2.0, "ml_meeting_point_comparator", "#dc3545"),
+    ]:
+        values = []
+        for scenario in scenarios:
+            sub = focus[(focus["scenario_name"] == scenario) & (focus["policy"] == policy)]
+            values.append(float(sub["mean_actual_profit"].iloc[0]) if not sub.empty else np.nan)
+        ax.bar(x + offset, values, width=width, label=policy, color=color)
+    ax.set_xticks(x)
+    ax.set_xticklabels([scenario.replace("_", "\n") for scenario in scenarios])
+    ax.set_ylabel("Mean actual profit")
+    ax.set_title("Deterministic vs ML meeting-point ranking")
+    ax.legend(frameon=False, fontsize=8)
     _save(fig, "rendezvous_fig5_ml_comparator.png")
 
 
 def fig6_sensitivity() -> None:
-    df = _load(RESULTS_DIR / "rendezvous_occlusion_sensitivity.csv")
+    df = _load(RESULTS_DIR / "rendezvous_policy_summary.csv")
     if df is None or df.empty:
         return
+    focus = df[df["rider_density_pct"] == 10].copy()
+    if focus.empty:
+        focus = df.copy()
     fig, ax = plt.subplots(figsize=(6.2, 3.1))
-    for policy in sorted(df["policy"].unique()):
-        sub = df[df["policy"] == policy]
+    for policy in sorted(focus["policy"].unique()):
+        sub = focus[focus["policy"] == policy].sort_values("occlusion_lambda")
         ax.plot(sub["occlusion_lambda"], sub["mean_actual_profit"], marker="o", label=policy)
     ax.set_xlabel("Occlusion lambda")
     ax.set_ylabel("Mean actual profit")
-    ax.set_title("Occlusion sensitivity")
+    ax.set_title("Occlusion sensitivity in very sparse demand")
     ax.legend(frameon=False)
     _save(fig, "rendezvous_fig6_sensitivity.png")
 

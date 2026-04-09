@@ -6,6 +6,7 @@ from typing import Iterable
 
 import joblib
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 
 from .data_types import RendezvousOpportunity
@@ -21,7 +22,6 @@ FEATURE_NAMES = [
     "urban_clutter_index",
     "sidewalk_access_score",
     "building_height_proxy",
-    "observability_score",
 ]
 
 
@@ -73,7 +73,7 @@ class MLMeetingPointSelector(MeetingPointSelector):
         rows = list(opportunities)
         if not rows:
             return self
-        x = np.asarray([feature_vector(row) for row in rows], dtype=float)
+        x = pd.DataFrame([feature_vector(row) for row in rows], columns=FEATURE_NAMES)
         y = np.asarray([row.success_probability for row in rows], dtype=float)
         self.model.fit(x, y)
         self._is_fit = True
@@ -82,7 +82,8 @@ class MLMeetingPointSelector(MeetingPointSelector):
     def opportunity_value(self, opportunity: RendezvousOpportunity) -> float:
         if not self._is_fit:
             return opportunity.observable_value
-        prediction = float(self.model.predict(np.asarray([feature_vector(opportunity)], dtype=float))[0])
+        x = pd.DataFrame([feature_vector(opportunity)], columns=FEATURE_NAMES)
+        prediction = float(self.model.predict(x)[0])
         probability = max(0.0, min(1.0, prediction))
         return opportunity.fare_share * probability
 
@@ -107,5 +108,4 @@ def feature_vector(opportunity: RendezvousOpportunity) -> list[float]:
         opportunity.urban_clutter_index,
         opportunity.sidewalk_access_score,
         opportunity.building_height_proxy,
-        opportunity.observability_score,
     ]

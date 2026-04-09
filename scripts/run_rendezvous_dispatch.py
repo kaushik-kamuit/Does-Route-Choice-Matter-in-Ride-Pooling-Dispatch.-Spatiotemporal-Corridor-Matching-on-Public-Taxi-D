@@ -50,6 +50,7 @@ def main() -> None:
     parser.add_argument("--sample", type=int, default=500)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--density", type=int, default=10)
+    parser.add_argument("--tag", type=str, default="")
     parser.add_argument("--scenario-name", type=str, default="primary")
     parser.add_argument("--meeting-k-ring", type=int, default=1)
     parser.add_argument("--max-walk-min", type=float, default=6.0)
@@ -115,11 +116,15 @@ def main() -> None:
             )
 
     results_dir = ROOT / "results"
+    suffix = f"_{args.tag}" if args.tag else ""
     outcomes_df = pd.DataFrame(outcome_rows)
     summaries_df = pd.DataFrame(summary_rows)
-    outcomes_df.to_csv(results_dir / "rendezvous_dispatch_outcomes.csv", index=False)
-    summaries_df.to_csv(results_dir / "rendezvous_dispatch_summary.csv", index=False)
-    (results_dir / "rendezvous_dispatch_config.json").write_text(json.dumps(config.to_dict(), indent=2), encoding="utf-8")
+    outcomes_df.to_csv(results_dir / f"rendezvous_dispatch_outcomes{suffix}.csv", index=False)
+    summaries_df.to_csv(results_dir / f"rendezvous_dispatch_summary{suffix}.csv", index=False)
+    (results_dir / f"rendezvous_dispatch_config{suffix}.json").write_text(
+        json.dumps(config.to_dict(), indent=2),
+        encoding="utf-8",
+    )
 
     dispatch_summary = summarize_dispatch(summaries_df)
     write_result_views(results_dir, pd.DataFrame(), dispatch_summary)

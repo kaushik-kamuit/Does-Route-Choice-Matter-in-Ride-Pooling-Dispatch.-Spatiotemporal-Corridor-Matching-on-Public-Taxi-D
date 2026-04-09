@@ -56,6 +56,8 @@ def evaluate_driver_policies(
     seed: int = 0,
 ) -> DriverPolicyEvaluation:
     route_evaluations: list[RouteOpportunityEvaluation] = []
+    nominal_selector = DeterministicMeetingPointSelector(use_observability=False)
+    observable_selector = DeterministicMeetingPointSelector(use_observability=True)
     for route_idx, route in enumerate(routes):
         corridor = build_corridor(
             route.polyline,
@@ -87,8 +89,6 @@ def evaluate_driver_policies(
             urban_context=urban_context,
         )
         route_cost = (route.distance_m / METERS_PER_MILE) * driver.cost_per_mile
-        nominal_selector = DeterministicMeetingPointSelector(use_observability=False)
-        observable_selector = DeterministicMeetingPointSelector(use_observability=True)
         nominal_selected = nominal_selector.select(opportunities, seats=driver.seats)
         observable_selected = observable_selector.select(opportunities, seats=driver.seats)
         route_evaluations.append(
@@ -116,6 +116,12 @@ def evaluate_driver_policies(
     corridor_idx = _choose_route(route_evaluations, lambda row: float(row.candidate_count))
     nominal_idx = _choose_route(route_evaluations, lambda row: row.nominal_route_value)
     observable_idx = _choose_route(route_evaluations, lambda row: row.observable_route_value)
+    ml_idx = None
+    if ml_selector is not None:
+        ml_idx = _choose_route(
+            route_evaluations,
+            lambda row: _selector_route_value(ml_selector, row.opportunities, seats=driver.seats) - row.route_cost,
+        )
 
     plans = {
         "corridor_only": _build_policy_outcome(
@@ -123,7 +129,7 @@ def evaluate_driver_policies(
             driver,
             route_evaluations[corridor_idx],
             score=float(route_evaluations[corridor_idx].candidate_count),
-            selector=DeterministicMeetingPointSelector(use_observability=True),
+            selector=nominal_selector,
             seed=seed,
         ),
         "rendezvous_only": _build_policy_outcome(
@@ -131,7 +137,7 @@ def evaluate_driver_policies(
             driver,
             route_evaluations[nominal_idx],
             score=route_evaluations[nominal_idx].nominal_route_value,
-            selector=DeterministicMeetingPointSelector(use_observability=True),
+            selector=nominal_selector,
             seed=seed + 17,
         ),
         "rendezvous_observable": _build_policy_outcome(
@@ -139,16 +145,18 @@ def evaluate_driver_policies(
             driver,
             route_evaluations[observable_idx],
             score=route_evaluations[observable_idx].observable_route_value,
-            selector=DeterministicMeetingPointSelector(use_observability=True),
+            selector=observable_selector,
             seed=seed + 31,
         ),
     }
     if ml_selector is not None:
+        assert ml_idx is not None
+        ml_score = _selector_route_value(ml_selector, route_evaluations[ml_idx].opportunities, seats=driver.seats)
         plans["ml_meeting_point_comparator"] = _build_policy_outcome(
             "ml_meeting_point_comparator",
             driver,
-            route_evaluations[observable_idx],
-            score=route_evaluations[observable_idx].observable_route_value,
+            route_evaluations[ml_idx],
+            score=ml_score - route_evaluations[ml_idx].route_cost,
             selector=ml_selector,
             seed=seed + 53,
         )
@@ -302,6 +310,15 @@ def _build_policy_outcome(
 def _choose_route(route_evaluations: list[RouteOpportunityEvaluation], metric) -> int:
     best = max(route_evaluations, key=lambda row: (metric(row), -row.route_idx))
     return best.route_idx
+
+
+def _selector_route_value(
+    selector: MeetingPointSelector,
+    opportunities: tuple[RendezvousOpportunity, ...],
+    *,
+    seats: int,
+) -> float:
+    return float(sum(selector.opportunity_value(opportunity) for opportunity in selector.select(opportunities, seats=seats)))
 
 
 def _make_route_line(polyline) -> LineString:

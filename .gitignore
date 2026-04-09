@@ -70,6 +70,8 @@ artifacts/
 # Models
 models/*.pkl
 models/*.bin
+models/*.joblib
+models/*feature_importance*.csv
 
 # Logs
 *.log
