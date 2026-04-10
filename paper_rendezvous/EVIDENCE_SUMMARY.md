@@ -118,28 +118,28 @@ From [rendezvous_dispatch_policy_summary.csv](K:\Kamuit\Uber_Logic\Research_pape
 
 ### Yellow sparse high occlusion dispatch, all day
 
-- `corridor_only`: `-2.67`
-- `rendezvous_only`: `0.57`
-- `rendezvous_observable`: `0.57`
+- `corridor_only`: `-5.71`
+- `rendezvous_only`: `-4.54`
+- `rendezvous_observable`: `-4.63`
 
 ### Yellow sparse high occlusion dispatch, morning peak
 
-- `corridor_only`: `-4.85`
-- `rendezvous_only`: `-2.53`
-- `rendezvous_observable`: `-2.08`
+- `corridor_only`: `-6.16`
+- `rendezvous_only`: `-5.24`
+- `rendezvous_observable`: `-5.03`
 
 Interpretation:
 
-- the systems story survives shared competition
-- morning peak remains the cleaner dispatch slice for the observability story
+- the systems story survives shared competition even in the harsher density-10 shared-pool setting
+- dispatch primarily strengthens the feasible-rendezvous claim; the observability edge is modest and more visible in morning peak than in all-day dispatch
 
 ## Urban-Context Ablation
 
 The best observability-specific ablation evidence is still the urban-context comparison:
 
-- earlier sparse-high-occlusion calibrated slice:
-  - `rendezvous_only`: `5.52` with context vs `5.05` without
-  - `rendezvous_observable`: `5.72` with context vs `5.19` without
+- sparse-high-occlusion calibrated density-10 slice:
+  - `rendezvous_only`: `-0.70` with context vs `-0.96` without
+  - `rendezvous_observable`: `-0.68` with context vs `-1.01` without
 
 Interpretation:
 
@@ -172,7 +172,7 @@ From [rendezvous_green_dispatch_policy_summary.csv](K:\Kamuit\Uber_Logic\Researc
 
 Interpretation:
 
-- Green supports the paper’s main primitive shift:
+- Green supports the paper's main primitive shift:
   - corridor-only remains clearly weakest
   - rendezvous-aware valuation transfers
 - Green does **not** support a universal observability-win claim
@@ -201,7 +201,7 @@ The ML comparator remains secondary.
 
 - it is still competitive in some Yellow slices
 - it is not needed for the main claim
-- it should stay out of the abstract’s central contribution statement
+- it should stay out of the abstract's central contribution statement
 
 ## Best Honest Framing
 

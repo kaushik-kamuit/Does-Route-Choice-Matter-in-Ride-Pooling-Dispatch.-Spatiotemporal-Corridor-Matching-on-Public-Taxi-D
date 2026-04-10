@@ -18,6 +18,7 @@ from matching.rider_index import RiderIndex
 from rendezvous import MLMeetingPointSelector, RendezvousConfig, evaluate_driver_policies
 from rendezvous.domain_io import apply_area_slice, build_driver_trips, load_domain_assets, load_urban_context_index
 from rendezvous.reporting import summarize_driver_outcomes
+from rendezvous.run_registry import create_run_artifact_dir, write_run_manifest
 from spatial.router import OSRMRouter
 
 DRIVER_COLUMNS = [
@@ -113,6 +114,16 @@ def main() -> None:
     if config.rider_density_pct < 100:
         riders_df = riders_df.sample(frac=config.rider_density_pct / 100.0, random_state=42).reset_index(drop=True)
 
+    results_dir = ROOT / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    run_id, run_dir = create_run_artifact_dir(
+        results_dir,
+        run_kind="driver",
+        domain=args.domain,
+        scenario_name=config.scenario_name,
+        tag=args.tag or config.time_slice,
+    )
+
     urban_context = load_urban_context_index(domain_config, config)
     drivers_df, riders_df = apply_area_slice(drivers_df, riders_df, urban_context, area_slice=config.area_slice)
     rider_index = RiderIndex(riders_df.reset_index(drop=True), index_bin_minutes=config.index_bin_minutes)
@@ -161,6 +172,7 @@ def main() -> None:
                         "observability_ablation": config.observability_ablation,
                         "use_urban_context": config.use_urban_context,
                         "walk_penalty_per_min": config.walk_penalty_per_min,
+                        "run_id": run_id,
                         **plan.to_dict(),
                     }
                 )
@@ -192,6 +204,7 @@ def main() -> None:
                             "observability_ablation": config.observability_ablation,
                             "use_urban_context": config.use_urban_context,
                             "walk_penalty_per_min": config.walk_penalty_per_min,
+                            "run_id": run_id,
                             "route_idx": route_eval.route_idx,
                             "candidate_count": route_eval.candidate_count,
                             "time_eligible_candidate_count": route_eval.time_eligible_candidate_count,
@@ -225,6 +238,7 @@ def main() -> None:
                                 "observability_ablation": config.observability_ablation,
                                 "use_urban_context": config.use_urban_context,
                                 "walk_penalty_per_min": config.walk_penalty_per_min,
+                                "run_id": run_id,
                                 "route_idx": route_eval.route_idx,
                                 "route_cost": route_eval.route_cost,
                                 "route_distance_miles": route_eval.route.distance_m / 1609.34,
@@ -253,20 +267,23 @@ def main() -> None:
                             }
                         )
 
-    suffix = f"_{args.tag}" if args.tag else ""
-    results_dir = ROOT / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
     outcomes_df = pd.DataFrame(outcome_rows)
     routes_df = pd.DataFrame(route_rows)
-    outcomes_df.to_csv(results_dir / f"rendezvous_driver_outcomes{suffix}.csv", index=False)
-    routes_df.to_csv(results_dir / f"rendezvous_route_evaluations{suffix}.csv", index=False)
-    pd.DataFrame(opportunity_rows).to_csv(results_dir / f"rendezvous_route_opportunities{suffix}.csv", index=False)
-    (results_dir / f"rendezvous_config{suffix}.json").write_text(json.dumps(config.to_dict(), indent=2), encoding="utf-8")
+    opportunity_df = pd.DataFrame(opportunity_rows)
+    outcomes_path = run_dir / "rendezvous_driver_outcomes.csv"
+    routes_path = run_dir / "rendezvous_route_evaluations.csv"
+    opportunities_path = run_dir / "rendezvous_route_opportunities.csv"
+    config_path = run_dir / "rendezvous_config.json"
+    outcomes_df.to_csv(outcomes_path, index=False)
+    routes_df.to_csv(routes_path, index=False)
+    opportunity_df.to_csv(opportunities_path, index=False)
+    config_path.write_text(json.dumps(config.to_dict(), indent=2), encoding="utf-8")
     router.flush_cache()
 
     summary = summarize_driver_outcomes(outcomes_df)
+    summary_path = run_dir / "rendezvous_driver_summary.csv"
     if not summary.empty:
-        summary.to_csv(results_dir / f"rendezvous_driver_summary{suffix}.csv", index=False)
+        summary.to_csv(summary_path, index=False)
     run_stats = {
         "domain": args.domain,
         "scenario_name": config.scenario_name,
@@ -278,9 +295,33 @@ def main() -> None:
         "seeds": len(seeds),
         "cache_only": not args.fetch,
         "model_path": args.model_path,
+        "run_id": run_id,
     }
-    (results_dir / f"rendezvous_driver_run_stats{suffix}.json").write_text(json.dumps(run_stats, indent=2), encoding="utf-8")
-    print(f"Wrote {len(outcomes_df):,} policy rows to {results_dir}")
+    run_stats_path = run_dir / "rendezvous_driver_run_stats.json"
+    run_stats_path.write_text(json.dumps(run_stats, indent=2), encoding="utf-8")
+    write_run_manifest(
+        results_dir=results_dir,
+        run_dir=run_dir,
+        run_id=run_id,
+        run_kind="driver",
+        domain=args.domain,
+        scenario_name=config.scenario_name,
+        tag=args.tag or "",
+        config=config.to_dict(),
+        cli_args=vars(args),
+        raw_outputs={
+            "driver_outcomes": outcomes_path,
+            "route_evaluations": routes_path,
+            "route_opportunities": opportunities_path,
+        },
+        derived_outputs={
+            "config": config_path,
+            "driver_run_stats": run_stats_path,
+            **({"driver_summary": summary_path} if summary_path.exists() else {}),
+        },
+        metadata=run_stats,
+    )
+    print(f"Wrote {len(outcomes_df):,} policy rows to {run_dir} ({run_id})")
 
 
 def _filter_by_hour_range(df: pd.DataFrame, hour_start: int, hour_end: int) -> pd.DataFrame:

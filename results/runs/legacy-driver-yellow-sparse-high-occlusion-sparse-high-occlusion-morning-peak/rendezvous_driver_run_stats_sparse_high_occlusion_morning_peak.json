@@ -1,0 +1,12 @@
+{
+  "domain": "yellow",
+  "scenario_name": "sparse_high_occlusion",
+  "requested_drivers": 500,
+  "evaluated_drivers": 120,
+  "skipped_no_route": 380,
+  "route_coverage_rate": 0.24,
+  "area_slice": "all",
+  "seeds": 5,
+  "cache_only": true,
+  "model_path": ""
+}

@@ -1,0 +1,13 @@
+{
+  "domain": "yellow",
+  "scenario_name": "sparse_high_occlusion",
+  "requested_drivers": 500,
+  "evaluated_drivers": 121,
+  "skipped_no_route": 379,
+  "route_coverage_rate": 0.242,
+  "area_slice": "all",
+  "seeds": 5,
+  "cache_only": true,
+  "model_path": "",
+  "run_id": "driver-yellow-sparse-high-occlusion-sparse-high-occlusion-evening-peak-d10-canonical-20260410T053243Z-4957538a"
+}

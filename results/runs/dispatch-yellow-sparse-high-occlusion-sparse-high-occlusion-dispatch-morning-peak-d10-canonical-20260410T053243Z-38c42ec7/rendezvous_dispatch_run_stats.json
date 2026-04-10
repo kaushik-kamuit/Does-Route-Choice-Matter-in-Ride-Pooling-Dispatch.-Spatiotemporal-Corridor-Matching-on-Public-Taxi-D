@@ -1,0 +1,12 @@
+{
+  "domain": "yellow",
+  "scenario_name": "sparse_high_occlusion",
+  "requested_drivers": 250,
+  "mean_route_coverage_rate": 0.48000000000000004,
+  "mean_drivers_skipped_no_route": 130.0,
+  "area_slice": "all",
+  "seeds": 3,
+  "cache_only": true,
+  "model_path": "",
+  "run_id": "dispatch-yellow-sparse-high-occlusion-sparse-high-occlusion-dispatch-morning-peak-d10-canonical-20260410T053243Z-38c42ec7"
+}

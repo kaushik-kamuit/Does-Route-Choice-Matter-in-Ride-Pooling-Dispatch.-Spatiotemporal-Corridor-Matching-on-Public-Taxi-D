@@ -194,30 +194,50 @@ def select_case_studies(
         )
     )
     chosen_rows: list[pd.DataFrame] = []
+    chosen_keys: set[tuple[object, ...]] = set()
+
+    def _append_focus(frame: pd.DataFrame, limit: int | None = None) -> None:
+        nonlocal chosen_rows, chosen_keys
+        if frame.empty:
+            return
+        frame = frame[
+            ~frame.apply(lambda row: tuple(row[column] for column in pair_cols) in chosen_keys, axis=1)
+        ]
+        if frame.empty:
+            return
+        if limit is not None:
+            frame = frame.head(limit)
+        if frame.empty:
+            return
+        chosen_rows.append(frame)
+        for _, row in frame.iterrows():
+            chosen_keys.add(tuple(row[column] for column in pair_cols))
+
     yellow_focus = ranked[
         (ranked["domain"] == "yellow")
         & (ranked["scenario_name"] == "sparse_high_occlusion")
         & (ranked["time_slice"] == "morning_peak")
-    ].head(preferred_yellow)
-    if not yellow_focus.empty:
-        chosen_rows.append(yellow_focus)
+    ]
+    _append_focus(yellow_focus, preferred_yellow)
+
+    yellow_all_day = ranked[
+        (ranked["domain"] == "yellow")
+        & (ranked["scenario_name"] == "sparse_high_occlusion")
+        & (ranked["time_slice"] == "all_day")
+    ]
+    _append_focus(yellow_all_day, max(preferred_yellow - sum(len(frame) for frame in chosen_rows if (frame["domain"] == "yellow").all()), 0))
 
     green_focus = ranked[
         (ranked["domain"] == "green")
         & (ranked["scenario_name"] == "sparse_high_occlusion")
         & (ranked["time_slice"] == "all_day")
-    ].head(preferred_green)
-    if not green_focus.empty:
-        chosen_rows.append(green_focus)
+    ]
+    _append_focus(green_focus, preferred_green)
 
     combined = pd.concat(chosen_rows, ignore_index=True) if chosen_rows else pd.DataFrame(columns=ranked.columns)
     if len(combined) < total_cases:
-        used = set(
-            tuple(row[column] for column in pair_cols)
-            for _, row in combined.iterrows()
-        )
         remainder = ranked[
-            ~ranked.apply(lambda row: tuple(row[column] for column in pair_cols) in used, axis=1)
+            ~ranked.apply(lambda row: tuple(row[column] for column in pair_cols) in chosen_keys, axis=1)
         ].head(total_cases - len(combined))
         if not remainder.empty:
             combined = pd.concat([combined, remainder], ignore_index=True)

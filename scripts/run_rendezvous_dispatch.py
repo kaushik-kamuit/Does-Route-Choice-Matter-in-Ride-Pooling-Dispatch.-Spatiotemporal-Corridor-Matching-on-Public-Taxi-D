@@ -17,6 +17,7 @@ load_dotenv(ROOT / ".env")
 from rendezvous import ALL_POLICIES, MLMeetingPointSelector, RendezvousConfig, RendezvousDispatcher
 from rendezvous.domain_io import apply_area_slice, load_domain_assets, load_urban_context_index
 from rendezvous.reporting import summarize_dispatch
+from rendezvous.run_registry import create_run_artifact_dir, write_run_manifest
 from spatial.router import OSRMRouter
 
 DRIVER_COLUMNS = [
@@ -112,6 +113,15 @@ def main() -> None:
     drivers_df, riders_df = apply_area_slice(drivers_df, riders_df, urban_context, area_slice=config.area_slice)
     if args.sample < len(drivers_df):
         drivers_df = drivers_df.sample(n=args.sample, random_state=42).reset_index(drop=True)
+    results_dir = ROOT / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    run_id, run_dir = create_run_artifact_dir(
+        results_dir,
+        run_kind="dispatch",
+        domain=args.domain,
+        scenario_name=config.scenario_name,
+        tag=args.tag or config.time_slice,
+    )
     dispatcher = RendezvousDispatcher(config, router=router, ml_selector=ml_selector, urban_context=urban_context)
     sampled_riders_df, rider_index, request_states, request_batches = dispatcher.prepare_rider_pool(riders_df)
 
@@ -147,6 +157,7 @@ def main() -> None:
                         "observability_ablation": config.observability_ablation,
                         "use_urban_context": config.use_urban_context,
                         "walk_penalty_per_min": config.walk_penalty_per_min,
+                        "run_id": run_id,
                     }
                     for row in outcomes
                 ]
@@ -167,25 +178,27 @@ def main() -> None:
                     "observability_ablation": config.observability_ablation,
                     "use_urban_context": config.use_urban_context,
                     "walk_penalty_per_min": config.walk_penalty_per_min,
+                    "run_id": run_id,
                 }
             )
 
-    results_dir = ROOT / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
-    suffix = f"_{args.tag}" if args.tag else ""
     outcomes_df = pd.DataFrame(outcome_rows)
     summaries_df = pd.DataFrame(summary_rows)
-    outcomes_df.to_csv(results_dir / f"rendezvous_dispatch_outcomes{suffix}.csv", index=False)
-    summaries_df.to_csv(results_dir / f"rendezvous_dispatch_summary{suffix}.csv", index=False)
-    (results_dir / f"rendezvous_dispatch_config{suffix}.json").write_text(
+    outcomes_path = run_dir / "rendezvous_dispatch_outcomes.csv"
+    summary_path = run_dir / "rendezvous_dispatch_summary.csv"
+    config_path = run_dir / "rendezvous_dispatch_config.json"
+    outcomes_df.to_csv(outcomes_path, index=False)
+    summaries_df.to_csv(summary_path, index=False)
+    config_path.write_text(
         json.dumps(config.to_dict(), indent=2),
         encoding="utf-8",
     )
     router.flush_cache()
 
     dispatch_summary = summarize_dispatch(summaries_df)
+    dispatch_policy_summary_path = run_dir / "rendezvous_dispatch_policy_summary.csv"
     if not dispatch_summary.empty:
-        dispatch_summary.to_csv(results_dir / f"rendezvous_dispatch_policy_summary{suffix}.csv", index=False)
+        dispatch_summary.to_csv(dispatch_policy_summary_path, index=False)
     run_stats = {
         "domain": args.domain,
         "scenario_name": config.scenario_name,
@@ -196,12 +209,35 @@ def main() -> None:
         "seeds": args.seeds,
         "cache_only": not args.fetch,
         "model_path": args.model_path,
+        "run_id": run_id,
     }
-    (results_dir / f"rendezvous_dispatch_run_stats{suffix}.json").write_text(
+    run_stats_path = run_dir / "rendezvous_dispatch_run_stats.json"
+    run_stats_path.write_text(
         json.dumps(run_stats, indent=2),
         encoding="utf-8",
     )
-    print(f"Wrote {len(outcomes_df):,} dispatch rows to {results_dir}")
+    write_run_manifest(
+        results_dir=results_dir,
+        run_dir=run_dir,
+        run_id=run_id,
+        run_kind="dispatch",
+        domain=args.domain,
+        scenario_name=config.scenario_name,
+        tag=args.tag or "",
+        config=config.to_dict(),
+        cli_args=vars(args),
+        raw_outputs={
+            "dispatch_outcomes": outcomes_path,
+            "dispatch_summary": summary_path,
+        },
+        derived_outputs={
+            "config": config_path,
+            "dispatch_run_stats": run_stats_path,
+            **({"dispatch_policy_summary": dispatch_policy_summary_path} if dispatch_policy_summary_path.exists() else {}),
+        },
+        metadata=run_stats,
+    )
+    print(f"Wrote {len(outcomes_df):,} dispatch rows to {run_dir} ({run_id})")
 
 
 def _filter_by_hour_range(df: pd.DataFrame, hour_start: int, hour_end: int) -> pd.DataFrame:

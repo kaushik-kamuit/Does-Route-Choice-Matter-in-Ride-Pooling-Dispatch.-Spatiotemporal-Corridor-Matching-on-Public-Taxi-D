@@ -178,9 +178,11 @@ def write_result_views(results_dir: Path, driver_summary: pd.DataFrame, dispatch
             primary.to_csv(results_dir / "rendezvous_primary_summary.csv", index=False)
 
             gap = (
-                primary.groupby("policy", as_index=False)["mean_nominal_realized_gap"]
+                primary.groupby([column for column in ["domain", "policy"] if column in primary.columns], as_index=False)[
+                    "mean_nominal_realized_gap"
+                ]
                 .mean()
-                .sort_values("mean_nominal_realized_gap", ascending=False)
+                .sort_values(["domain", "mean_nominal_realized_gap"] if "domain" in primary.columns else ["mean_nominal_realized_gap"], ascending=[True, False] if "domain" in primary.columns else False)
             )
             gap.to_csv(results_dir / "rendezvous_nominal_realized_gap.csv", index=False)
 
@@ -188,7 +190,10 @@ def write_result_views(results_dir: Path, driver_summary: pd.DataFrame, dispatch
             if not comparator.empty:
                 comparator.to_csv(results_dir / "rendezvous_meeting_point_comparison.csv", index=False)
 
-        sensitivity = _default_slice(driver_summary).sort_values(["occlusion_lambda", "policy"])
+        sensitivity = _default_slice(driver_summary)
+        sort_cols = [column for column in ["occlusion_lambda", "policy"] if column in sensitivity.columns]
+        if sort_cols:
+            sensitivity = sensitivity.sort_values(sort_cols)
         sensitivity.to_csv(results_dir / "rendezvous_occlusion_sensitivity.csv", index=False)
 
     if dispatch_summary is not None and not dispatch_summary.empty:
@@ -199,6 +204,8 @@ def _default_slice(df: pd.DataFrame) -> pd.DataFrame:
     subset = df.copy()
     if "time_slice" in subset.columns and "all_day" in set(subset["time_slice"].dropna().astype(str)):
         subset = subset[subset["time_slice"] == "all_day"]
+    if "area_slice" in subset.columns and "all" in set(subset["area_slice"].dropna().astype(str)):
+        subset = subset[subset["area_slice"] == "all"]
     if "observability_profile" in subset.columns and "calibrated" in set(subset["observability_profile"].dropna().astype(str)):
         subset = subset[subset["observability_profile"] == "calibrated"]
     if "observability_ablation" in subset.columns:

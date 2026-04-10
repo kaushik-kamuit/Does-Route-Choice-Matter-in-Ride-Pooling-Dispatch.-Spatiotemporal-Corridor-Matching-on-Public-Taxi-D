@@ -1,0 +1,12 @@
+{
+  "domain": "yellow",
+  "scenario_name": "sparse_high_occlusion",
+  "requested_drivers": 500,
+  "evaluated_drivers": 500,
+  "skipped_no_route": 0,
+  "route_coverage_rate": 1.0,
+  "area_slice": "all",
+  "seeds": 5,
+  "cache_only": true,
+  "model_path": "models\\rendezvous_meeting_point_model_yellow.joblib"
+}

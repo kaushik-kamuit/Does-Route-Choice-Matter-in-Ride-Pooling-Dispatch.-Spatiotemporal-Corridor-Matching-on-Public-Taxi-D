@@ -1,0 +1,12 @@
+{
+  "domain": "yellow",
+  "scenario_name": "sparse_high_occlusion",
+  "requested_drivers": 250,
+  "mean_route_coverage_rate": 1.0,
+  "mean_drivers_skipped_no_route": 0.0,
+  "area_slice": "all",
+  "seeds": 3,
+  "cache_only": true,
+  "model_path": "",
+  "run_id": "dispatch-yellow-sparse-high-occlusion-sparse-high-occlusion-dispatch-d10-canonical-20260410T053245Z-d0750981"
+}

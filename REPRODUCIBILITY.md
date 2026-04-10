@@ -56,6 +56,20 @@ Summarize the outputs:
 python scripts\summarize_rendezvous_results.py
 ```
 
+If you have older flat files in `results/`, register them into immutable run folders first:
+
+```powershell
+python scripts\backfill_rendezvous_run_registry.py
+```
+
+For the simplest end-to-end paper refresh, use:
+
+```powershell
+python scripts\prepare_rendezvous_submission.py
+```
+
+That command safely runs backfill, summary rebuild, figure generation, case-study generation, and Overleaf package sync in sequence.
+
 Generate publication figures:
 
 ```powershell
@@ -64,12 +78,15 @@ python visualizations\plot_rendezvous_figures.py
 
 ## Result Files
 
+Raw experiment artifacts are now run-scoped and manifest-backed:
+
+- `results/runs/<run_id>/manifest.json`
+- `results/runs/<run_id>/rendezvous_driver_outcomes.csv`
+- `results/runs/<run_id>/rendezvous_route_evaluations.csv`
+- `results/runs/<run_id>/rendezvous_dispatch_summary.csv`
+
 - `data/urban_context/processed/urban_context_h3_res9.parquet`
 - `data/urban_context/processed/urban_context_sources.json`
-- `results/rendezvous_driver_outcomes*.csv`
-- `results/rendezvous_route_evaluations*.csv`
-- `results/rendezvous_dispatch_outcomes*.csv`
-- `results/rendezvous_dispatch_summary*.csv`
 - `results/rendezvous_primary_summary.csv`
 - `results/rendezvous_nominal_realized_gap.csv`
 - `results/rendezvous_meeting_point_comparison.csv`

@@ -1,0 +1,12 @@
+{
+  "domain": "green",
+  "scenario_name": "primary",
+  "requested_drivers": 500,
+  "evaluated_drivers": 500,
+  "skipped_no_route": 0,
+  "route_coverage_rate": 1.0,
+  "area_slice": "all",
+  "seeds": 5,
+  "cache_only": false,
+  "model_path": ""
+}

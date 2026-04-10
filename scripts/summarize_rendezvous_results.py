@@ -17,6 +17,7 @@ from rendezvous.reporting import (
     write_result_views,
 )
 from rendezvous.analysis import build_matched_observability_pairs
+from rendezvous.run_registry import backfill_legacy_runs, has_registered_runs, registered_file_paths
 
 BOOTSTRAP_ITERS = 5000
 DEFAULT_SEEDS = tuple(range(42, 142))
@@ -38,14 +39,39 @@ def _load_json_rows(pattern: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _load_registered_csvs(results_dir: Path, *, role: str, run_kind: str | None = None) -> pd.DataFrame:
+    frames = [pd.read_csv(path) for path in registered_file_paths(results_dir, role=role, run_kind=run_kind)]
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def _load_registered_json_rows(results_dir: Path, *, role: str, run_kind: str | None = None) -> pd.DataFrame:
+    rows = []
+    for path in registered_file_paths(results_dir, role=role, run_kind=run_kind):
+        rows.append(json.loads(path.read_text(encoding="utf-8")))
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     results_dir = ROOT / "results"
-    driver_outcomes = _load_many("rendezvous_driver_outcomes*.csv")
-    dispatch_summary = _load_many("rendezvous_dispatch_summary*.csv")
-    route_evaluations = _load_many("rendezvous_route_evaluations*.csv")
-    route_opportunities = _load_many("rendezvous_route_opportunities*.csv")
-    driver_run_stats = _load_json_rows("rendezvous_driver_run_stats*.json")
-    dispatch_run_stats = _load_json_rows("rendezvous_dispatch_run_stats*.json")
+    backfill_legacy_runs(results_dir)
+    if has_registered_runs(results_dir):
+        driver_outcomes = _load_registered_csvs(results_dir, role="driver_outcomes", run_kind="driver")
+        dispatch_summary = _load_registered_csvs(results_dir, role="dispatch_summary", run_kind="dispatch")
+        route_evaluations = _load_registered_csvs(results_dir, role="route_evaluations", run_kind="driver")
+        route_opportunities = _load_registered_csvs(results_dir, role="route_opportunities", run_kind="driver")
+        driver_run_stats = _load_registered_json_rows(results_dir, role="driver_run_stats", run_kind="driver")
+        dispatch_run_stats = _load_registered_json_rows(results_dir, role="dispatch_run_stats", run_kind="dispatch")
+    else:
+        driver_outcomes = _load_many("rendezvous_driver_outcomes*.csv")
+        dispatch_summary = _load_many("rendezvous_dispatch_summary*.csv")
+        route_evaluations = _load_many("rendezvous_route_evaluations*.csv")
+        route_opportunities = _load_many("rendezvous_route_opportunities*.csv")
+        driver_run_stats = _load_json_rows("rendezvous_driver_run_stats*.json")
+        dispatch_run_stats = _load_json_rows("rendezvous_dispatch_run_stats*.json")
 
     driver_summary = summarize_driver_outcomes(driver_outcomes)
     dispatch_policy_summary = summarize_dispatch(dispatch_summary)
