@@ -23,7 +23,7 @@ DEFAULT_RESOLUTION = 9
 DEFAULT_DENSIFY_STEP_M = 40.0
 DOWNLOAD_CHUNK_BYTES = 1 << 20
 SOCRATA_PAGE_SIZE = 20_000
-USER_AGENT = 'codex-rendezvous-urban-context/1.0'
+USER_AGENT = 'rendezvous-urban-context/1.0'
 
 RAW_DIR = ROOT / 'data' / 'urban_context' / 'raw'
 PROCESSED_DIR = ROOT / 'data' / 'urban_context' / 'processed'
