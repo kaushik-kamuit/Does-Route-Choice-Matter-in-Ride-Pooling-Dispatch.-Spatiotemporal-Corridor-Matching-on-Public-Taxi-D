@@ -1,6 +1,6 @@
 # Reproducibility Guide
 
-This branch is organized around a fresh Paper 2 workflow for rendezvous-aware route choice under occlusion.
+This repository is organized around the rendezvous-aware route choice workflow under occlusion.
 
 ## Environment
 

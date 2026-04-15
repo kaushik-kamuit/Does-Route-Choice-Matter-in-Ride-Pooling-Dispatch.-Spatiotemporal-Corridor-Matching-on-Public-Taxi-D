@@ -20,13 +20,13 @@ matplotlib.rcParams.update(
         "font.family": "sans-serif",
         "font.sans-serif": ["Arial", "DejaVu Sans", "Liberation Sans"],
         "mathtext.fontset": "stix",
-        "font.size": 9.5,
-        "axes.titlesize": 11,
-        "axes.labelsize": 9.5,
-        "xtick.labelsize": 8.8,
-        "ytick.labelsize": 8.8,
-        "legend.fontsize": 8.6,
-        "figure.titlesize": 11,
+        "font.size": 10.0,
+        "axes.titlesize": 10.4,
+        "axes.labelsize": 10.0,
+        "xtick.labelsize": 10.0,
+        "ytick.labelsize": 10.0,
+        "legend.fontsize": 10.0,
+        "figure.titlesize": 10.6,
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.grid": False,
@@ -177,6 +177,12 @@ def _save(fig: plt.Figure, name: str) -> None:
     fig.savefig(PLOTS_DIR / pdf_name, bbox_inches="tight", facecolor=fig.get_facecolor())
     fig.savefig(PAPER_FIG_DIR / pdf_name, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
+
+
+def _finalize_axes_text(fig: plt.Figure, size: float = 10.0) -> None:
+    for text in fig.findobj(match=matplotlib.text.Text):
+        if text.get_fontsize() is not None:
+            text.set_fontsize(size)
 
 
 def _save_alias(source_name: str, alias_name: str) -> None:
@@ -460,37 +466,41 @@ def fig1_concept() -> None:
         "Expanded route corridor",
         xy=(1.15, 2.72),
         xytext=(0.85, 4.02),
-        fontsize=8.5,
+        fontsize=12.4,
+        fontweight="bold",
         color="#143d59",
         ha="left",
-        arrowprops=dict(arrowstyle="-|>", color="#143d59", lw=0.9, shrinkA=2, shrinkB=3),
+        arrowprops=dict(arrowstyle="-|>", color="#143d59", lw=1.1, shrinkA=2, shrinkB=3),
     )
     ax.annotate(
         "Corridor-near riders",
         xy=(8.35, 3.10),
         xytext=(7.55, 4.08),
-        fontsize=8.5,
+        fontsize=12.4,
+        fontweight="bold",
         color="#6f1d9b",
         ha="left",
-        arrowprops=dict(arrowstyle="-|>", color="#6f1d9b", lw=0.9, shrinkA=2, shrinkB=3),
+        arrowprops=dict(arrowstyle="-|>", color="#6f1d9b", lw=1.1, shrinkA=2, shrinkB=3),
     )
     ax.annotate(
         "Route-anchor meeting\ncandidates",
         xy=(1.92, anchor_y[0]),
         xytext=(0.78, 0.70),
-        fontsize=8.3,
+        fontsize=11.8,
+        fontweight="bold",
         color="#2a9d8f",
         ha="left",
-        arrowprops=dict(arrowstyle="-|>", color="#2a9d8f", lw=0.9, shrinkA=2, shrinkB=3),
+        arrowprops=dict(arrowstyle="-|>", color="#2a9d8f", lw=1.1, shrinkA=2, shrinkB=3),
     )
     ax.annotate(
         "Best feasible and observable\ncommon meeting point",
         xy=(anchor_x[selected_idx], anchor_y[selected_idx]),
         xytext=(5.65, 0.60),
-        fontsize=8.2,
+        fontsize=11.8,
+        fontweight="bold",
         color="#d62828",
         ha="center",
-        arrowprops=dict(arrowstyle="-|>", color="#d62828", lw=0.9, shrinkA=2, shrinkB=3),
+        arrowprops=dict(arrowstyle="-|>", color="#d62828", lw=1.1, shrinkA=2, shrinkB=3),
     )
     ax.text(
         5.0,
@@ -498,10 +508,12 @@ def fig1_concept() -> None:
         "Routes should be valued by the common meeting opportunities they create, not by proximity alone.",
         ha="center",
         va="bottom",
-        fontsize=8.3,
+        fontsize=12.2,
+        fontweight="bold",
         color="#444444",
     )
     ax.axis("off")
+    _finalize_axes_text(fig, size=10.6)
     _save(fig, "rendezvous_fig1_concept.png")
 
 
@@ -606,15 +618,15 @@ def fig2_matched_pairs() -> None:
     _style_axis(ax_delta, xlabel="Profit delta")
     ax_delta.grid(axis="x", linestyle="-", alpha=0.6)
     ax_delta.grid(axis="y", visible=False)
-    ax_delta.set_title("Higher minus lower observability", pad=8)
+    ax_delta.set_title("Higher minus lower observability", pad=8, fontweight="bold")
     ax_delta.set_yticks(y)
     ax_delta.set_yticklabels(labels)
     ax_delta.set_ylim(-0.55, len(y) - 0.45)
     xmax = max(float(np.nanmax(ci_high)), float(np.nanmax(delta_vals))) + 0.75
     ax_delta.set_xlim(0.0, xmax)
     for yy, value, pairs in zip(y, delta_vals, n_pairs):
-        ax_delta.text(value + 0.12, yy + 0.07, f"{value:.2f}", ha="left", va="bottom", fontsize=7.8, color="#2c2c2c")
-        ax_delta.text(0.06, yy - 0.18, f"n={int(pairs)} matched pairs", ha="left", va="center", fontsize=7.2, color="#5b6570")
+        ax_delta.text(value + 0.12, yy + 0.07, f"{value:.2f}", ha="left", va="bottom", fontsize=8.8, color="#2c2c2c")
+        ax_delta.text(0.06, yy - 0.18, f"n={int(pairs)} matched pairs", ha="left", va="center", fontsize=8.8, color="#5b6570")
 
     win_vals = focus["higher_observability_win_rate"].to_numpy(dtype=float)
     ax_win.hlines(y, 0.5, win_vals, color="#8db7dd", linewidth=6.0, alpha=0.95, zorder=1)
@@ -623,15 +635,24 @@ def fig2_matched_pairs() -> None:
     _style_axis(ax_win, xlabel="Win rate")
     ax_win.grid(axis="x", linestyle="-", alpha=0.6)
     ax_win.grid(axis="y", visible=False)
-    ax_win.set_title("Higher-observability win rate", pad=8)
+    ax_win.set_title("Higher-observability win rate", pad=8, fontweight="bold")
     ax_win.set_yticks(y)
-    ax_win.set_yticklabels([])
+    ax_win.set_yticklabels(labels)
     ax_win.tick_params(axis="y", length=0)
     ax_win.set_xlim(0.0, 1.0)
     ax_win.set_ylim(-0.55, len(y) - 0.45)
     for yy, value in zip(y, win_vals):
-        ax_win.text(value + 0.025, yy, f"{value:.2f}", ha="left", va="center", fontsize=7.8, color="#2c2c2c")
-    fig.suptitle("Matched route-pair observability isolation", y=1.02)
+        ax_win.text(
+            min(value + 0.035, 0.94),
+            yy + 0.07,
+            f"{value:.2f}",
+            ha="left",
+            va="bottom",
+            fontsize=8.8,
+            color="#2c2c2c",
+        )
+    fig.suptitle("Matched route-pair observability isolation", y=1.02, fontweight="bold")
+    _finalize_axes_text(fig, size=8.8)
     _save(fig, "rendezvous_fig2_matched_pairs.png")
 
 
@@ -665,16 +686,16 @@ def fig3_gap() -> None:
         for ax in [ax_left, ax_right]:
             ax.barh(yi, value, color=POLICY_COLORS[policy], edgecolor="#303030", height=0.58)
         if policy == "corridor_only":
-            ax_right.text(value + 0.20, yi, f"{value:.1f}", va="center", ha="left", fontsize=8)
+            ax_right.text(value + 0.20, yi, f"{value:.1f}", va="center", ha="left", fontsize=8.8)
         else:
-            ax_left.text(value + 0.12, yi, f"{value:.1f}", va="center", ha="left", fontsize=8)
+            ax_left.text(value + 0.12, yi, f"{value:.1f}", va="center", ha="left", fontsize=8.8)
     ax_left.set_xlim(0.0, 6.2)
     ax_right.set_xlim(22.0, 24.8)
     ax_left.set_yticks(y)
     ax_left.set_yticklabels([POLICY_LABELS[policy] for policy in sub["policy"]])
     ax_right.tick_params(axis="y", left=False, labelleft=False)
     ax_left.invert_yaxis()
-    ax_left.set_title("Nominal vs. Realized Service Gap")
+    ax_left.set_title("Nominal vs. Realized Service Gap", fontweight="bold")
     ax_left.set_xlabel("Mean Nominal - Realized Gap")
     ax_right.set_xlabel("Mean Nominal - Realized Gap")
     ax_left.spines["right"].set_visible(False)
@@ -686,6 +707,7 @@ def fig3_gap() -> None:
     kwargs.update(transform=ax_right.transAxes)
     ax_right.plot((-d, +d), (-d, +d), **kwargs)
     ax_right.plot((-d, +d), (1 - d, 1 + d), **kwargs)
+    _finalize_axes_text(fig, size=8.8)
     _save(fig, "rendezvous_fig3_gap.png")
 
 
@@ -731,19 +753,29 @@ def fig4_dispatch() -> None:
         xpos = np.arange(len(shown_policies))
         ax.bar(xpos, vals, color=[POLICY_COLORS[p] for p in shown_policies], edgecolor="#2d2d2d", linewidth=0.7, width=0.62)
         for idx, policy in enumerate(shown_policies):
+            label_y = vals[idx] + (0.16 if vals[idx] >= 0 else 0.14)
             if not sub_ci.empty and policy in sub_ci.index:
                 mean = vals[idx]
                 ci_row = sub_ci.loc[[policy]].iloc[0]
                 low = mean - float(ci_row["ci_low"])
                 high = float(ci_row["ci_high"]) - mean
                 ax.errorbar(idx, mean, yerr=[[low], [high]], fmt="none", ecolor="#1f2933", capsize=3, linewidth=1.1)
-            ax.text(idx, vals[idx] + (0.16 if vals[idx] >= 0 else -0.22), f"{vals[idx]:.2f}", ha="center", va="bottom" if vals[idx] >= 0 else "top", fontsize=7.7)
+                label_y = mean + high + 0.10 if mean >= 0 else mean + 0.14
+            ax.text(
+                idx,
+                label_y,
+                f"{vals[idx]:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8.8,
+            )
         ax.axhline(0.0, color="#bdbdbd", linewidth=0.9)
         ax.set_xticks(xpos)
         ax.set_xticklabels([POLICY_AXIS_LABELS[p] for p in shown_policies])
         _style_axis(ax, ylabel="Mean Profit per Driver" if scenario == "primary" else None)
-        ax.set_title(title)
-    fig.suptitle("Dispatch Validation in Primary and Hard Regimes", y=1.02)
+        ax.set_title(title, fontweight="bold")
+    fig.suptitle("Dispatch Validation in Primary and Hard Regimes", y=1.02, fontweight="bold")
+    _finalize_axes_text(fig, size=8.8)
     _save(fig, "rendezvous_fig4_dispatch.png")
 
 

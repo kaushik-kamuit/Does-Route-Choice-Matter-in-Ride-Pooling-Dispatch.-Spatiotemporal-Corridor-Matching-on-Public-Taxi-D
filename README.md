@@ -1,22 +1,22 @@
 # Rendezvous-Aware Route Choice Under Occlusion
 
-This branch is a fresh research workspace for studying route choice in urban ride-pooling through feasible and observable rendezvous opportunities. The main question is no longer whether route-aware corridors help in general, but whether routes should be valued by the common meeting opportunities they induce and by how reliable those opportunities remain under urban occlusion.
+This repository contains the code, experiments, and manuscript package for studying route choice in urban ride-pooling through feasible and observable rendezvous opportunities. The central question is whether routes should be valued by the common meeting opportunities they induce, rather than by corridor proximity alone.
 
-The implementation is intentionally narrow:
+## Repository Contents
 
-- `src/data_prep/`, `src/spatial/`, and `src/matching/rider_index.py` are retained as low-level infrastructure.
-- `scripts/build_urban_context.py` downloads official NYC street, sidewalk, building, and PLUTO layers, then aggregates them to H3 for observability-aware experiments.
-- `src/rendezvous/` is the main Paper 2 package and contains the new route evaluator, meeting-point logic, observability proxy, and dispatch validation shell.
-- `paper_rendezvous/` is the only manuscript package on this branch.
-- `results/runs/<run_id>/` stores immutable raw and per-run derived artifacts.
-- `results/rendezvous_*` and `results/plots/rendezvous_fig*` are the paper-facing summary views rebuilt from the run registry.
+- `src/rendezvous/`: route evaluation, meeting-point generation, observability proxy, and dispatch validation logic
+- `scripts/`: data preparation, experiment runners, result summarization, and manuscript asset generation
+- `data/urban_context/`: official NYC street, sidewalk, building, and PLUTO layers plus derived H3 summaries
+- `results/runs/<run_id>/`: immutable run-scoped artifacts and manifests
+- `paper_rendezvous/`: manuscript source package
+- `paper_rendezvous_overleaf/`: slim Overleaf-ready manuscript package
 
-The active policy family is:
+## Policy Variants
 
 - `corridor_only`: near-route rider compatibility only
-- `rendezvous_only`: feasible common meeting opportunities without observability
+- `rendezvous_only`: feasible common meeting opportunities without observability-aware weighting
 - `rendezvous_observable`: feasible common meeting opportunities with observability-aware valuation
-- `ml_meeting_point_comparator`: ML-based meeting-point ranking on top of the same route valuation shell
+- `ml_meeting_point_comparator`: learned meeting-point ranking on the same valuation shell
 
 ## Quick Start
 
@@ -28,17 +28,12 @@ python scripts\run_rendezvous_dispatch.py --sample 100 --seeds 1
 python scripts\prepare_rendezvous_submission.py
 ```
 
-`prepare_rendezvous_submission.py` is the easiest safe refresh path. It backfills legacy runs into the registry if needed, rebuilds paper summaries, refreshes figures, rebuilds case studies, and syncs the slim Overleaf package in the correct order.
+`prepare_rendezvous_submission.py` is the safest end-to-end refresh path. It backfills legacy runs into the registry if needed, rebuilds summaries, regenerates figures and case studies, and synchronizes the Overleaf package.
 
-## Repo Layout
+## Reproducibility
 
-- `src/rendezvous/`: Paper 2 method and evaluation logic
-- `data/urban_context/`: official NYC context layers and H3 summaries used by the occlusion proxy
-- `scripts/`: dataset building, experiment runners, training, and summarization
-- `paper_rendezvous/`: standalone manuscript package
-- `results/runs/`: immutable experiment runs with manifests
-- `results/`: paper summaries and figure outputs rebuilt from registered runs
+The full command sequence and output layout are documented in [REPRODUCIBILITY.md](REPRODUCIBILITY.md).
 
-## Notes
+## Manuscript Package
 
-This branch descends from earlier route-choice work, but it deliberately avoids reusing the earlier manuscript framing, result namespace, figure namespace, and route-ranking story. The reused components are infrastructure only.
+The paper source lives in `paper_rendezvous/`. The synchronized submission package in `paper_rendezvous_overleaf/` is organized so it can be uploaded directly to Overleaf as a paper-only project.

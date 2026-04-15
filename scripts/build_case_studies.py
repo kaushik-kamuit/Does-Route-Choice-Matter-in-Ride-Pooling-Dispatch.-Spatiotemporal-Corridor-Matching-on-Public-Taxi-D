@@ -13,6 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 from shapely import wkt
@@ -69,12 +70,31 @@ def main() -> None:
         case_geometry = geometry_by_case.get(case["case_id"], {})
         row_records = _score_case(case_index, case, case_geometry)
         rows.extend(row_records)
-        _save_case_panel(case_index, case, case_geometry)
+        _save_case_panel(case_index, case, case_geometry, include_legend=False)
         _save_case_interactive_map(case_index, case, case_geometry)
 
     case_df = pd.DataFrame(rows)
     case_df.to_csv(RESULTS_DIR / "rendezvous_case_studies.csv", index=False)
     _write_agreement_summary(case_df)
+    mechanism_case = _choose_mechanism_case(case_df)
+    mechanism_lookup = {
+        idx: (case, geometry_by_case.get(case["case_id"], {}))
+        for idx, case in enumerate(selected_cases, start=1)
+    }
+    if mechanism_case in mechanism_lookup:
+        mechanism_case_data, mechanism_geometry = mechanism_lookup[mechanism_case]
+        _save_case_panel(
+            mechanism_case,
+            mechanism_case_data,
+            mechanism_geometry,
+            include_legend=True,
+            output_name="rendezvous_fig2_matched_pair_mechanism",
+            title_override=(
+                f"Illustrative matched pair: driver {mechanism_case_data['driver_id']}, "
+                f"routes {mechanism_case_data['high_route_idx']} vs {mechanism_case_data['low_route_idx']} "
+                f"({str(mechanism_case_data['time_slice']).replace('_', ' ')})"
+            ),
+        )
     _build_manuscript_figure(case_df)
     _build_appendix_figure(case_df)
 
@@ -409,8 +429,27 @@ def _local_openness_score(buildings: list[object], anchor_point: Point | None) -
     return max(0.0, min(1.0, 1.0 - coverage))
 
 
-def _save_case_panel(case_index: int, case: dict[str, object], geometry: dict[str, list[object]]) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(8.8, 4.2))
+def _case_legend_handles() -> list[Line2D]:
+    return [
+        Line2D([0], [0], color="#143d59", lw=2.3, label="Route"),
+        Line2D([0], [0], color="#bc6c25", lw=6.0, alpha=0.28, label="Corridor"),
+        Line2D([0], [0], color="#6c757d", lw=1.2, linestyle="--", label="Walk-to-anchor link"),
+        Line2D([0], [0], marker="o", linestyle="", markersize=5.8, markerfacecolor="#6f1d9b", markeredgecolor="white", label="Selected rider pickup"),
+        Line2D([0], [0], marker="o", linestyle="", markersize=5.5, markerfacecolor="#2a9d8f", markeredgecolor="white", label="Candidate anchor"),
+        Line2D([0], [0], marker="*", linestyle="", markersize=9, markerfacecolor="#d62828", markeredgecolor="white", label="Selected anchor"),
+    ]
+
+
+def _save_case_panel(
+    case_index: int,
+    case: dict[str, object],
+    geometry: dict[str, list[object]],
+    *,
+    include_legend: bool,
+    output_name: str | None = None,
+    title_override: str | None = None,
+) -> None:
+    fig, axes = plt.subplots(1, 2, figsize=(12.0, 5.8))
     high_bounds = _compute_panel_bounds(case["high_route"], case["high_opportunities"], case["high_selected"], geometry)
     low_bounds = _compute_panel_bounds(case["low_route"], case["low_opportunities"], case["low_selected"], geometry)
     shared_bounds = (
@@ -428,11 +467,16 @@ def _save_case_panel(case_index: int, case: dict[str, object], geometry: dict[st
         selected_df = case[f"{route_key}_selected"]
         _plot_route_panel(ax, route_row, opportunities_df, selected_df, geometry, fixed_bounds=shared_bounds)
         route_row = case[f"{route_key}_route"]
-        ax.set_title(title, fontsize=9, pad=4)
+        ax.set_title(title, fontsize=12.0, pad=7)
         metrics = _panel_metrics(route_row, opportunities_df, selected_df)
+        box_x, box_y, box_ha, box_va = _panel_metrics_box_position(
+            case_index=case_index,
+            route_key=route_key,
+            output_name=output_name,
+        )
         ax.text(
-            0.02,
-            0.98,
+            box_x,
+            box_y,
             (
                 f"Route obs. {metrics['route_obs']:.2f}\n"
                 f"Anchor obs. {metrics['anchor_obs']:.2f}\n"
@@ -441,30 +485,32 @@ def _save_case_panel(case_index: int, case: dict[str, object], geometry: dict[st
                 f"Route {metrics['route_mi']:.2f} mi"
             ),
             transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=7.0,
+            ha=box_ha,
+            va=box_va,
+            fontsize=11.0,
             color="#1f1f1f",
             bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor="#bcbcbc", alpha=0.9),
         )
-    fig.suptitle(
-        f"Case {case_index}: {case['domain'].title()} {case['scenario_name'].replace('_', ' ')} "
-        f"({case['time_slice'].replace('_', ' ')})",
-        fontsize=10,
-        y=1.02,
+    panel_title = title_override or (
+        f"Case {case_index}: driver {case['driver_id']}, routes {case['high_route_idx']} vs {case['low_route_idx']} "
+        f"({case['time_slice'].replace('_', ' ')})"
     )
-    handles = [
-        Line2D([0], [0], color="#143d59", lw=2.3, label="Route"),
-        Line2D([0], [0], color="#bc6c25", lw=6.0, alpha=0.28, label="Corridor"),
-        Line2D([0], [0], color="#6c757d", lw=1.2, linestyle="--", label="Walk-to-anchor link"),
-        Line2D([0], [0], marker="o", linestyle="", markersize=5.8, markerfacecolor="#6f1d9b", markeredgecolor="white", label="Selected rider pickup"),
-        Line2D([0], [0], marker="o", linestyle="", markersize=5.5, markerfacecolor="#2a9d8f", markeredgecolor="white", label="Candidate anchor"),
-        Line2D([0], [0], marker="*", linestyle="", markersize=9, markerfacecolor="#d62828", markeredgecolor="white", label="Selected anchor"),
-    ]
-    fig.legend(handles=handles, loc="lower center", ncol=3, frameon=False, fontsize=7.3, bbox_to_anchor=(0.5, -0.03))
-    fig.tight_layout()
-    fig.savefig(FIG_DIR / f"rendezvous_case_study_{case_index:02d}.png", dpi=260, bbox_inches="tight")
-    fig.savefig(FIG_DIR / f"rendezvous_case_study_{case_index:02d}.pdf", bbox_inches="tight")
+    fig.suptitle(panel_title, fontsize=16.5, fontweight="semibold", y=1.03)
+    if include_legend:
+        fig.legend(
+            handles=_case_legend_handles(),
+            loc="lower center",
+            ncol=3,
+            frameon=False,
+            fontsize=11.0,
+            bbox_to_anchor=(0.5, -0.005),
+        )
+        fig.subplots_adjust(bottom=0.17, top=0.84, wspace=0.04)
+    else:
+        fig.subplots_adjust(bottom=0.04, top=0.84, wspace=0.04)
+    stem = output_name or f"rendezvous_case_study_{case_index:02d}"
+    fig.savefig(FIG_DIR / f"{stem}.png", dpi=260, bbox_inches="tight")
+    fig.savefig(FIG_DIR / f"{stem}.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -483,6 +529,18 @@ def _panel_metrics(route_row: pd.Series, opportunities_df: pd.DataFrame, selecte
         "walk_min": float(route_row["mean_route_walk_min"]),
         "route_mi": float(route_row["route_distance_miles"]),
     }
+
+
+def _panel_metrics_box_position(*, case_index: int, route_key: str, output_name: str | None) -> tuple[float, float, str, str]:
+    if output_name == "rendezvous_fig2_matched_pair_mechanism":
+        if route_key == "low":
+            return 0.98, 0.02, "right", "bottom"
+        return 0.02, 0.98, "left", "top"
+    if case_index == 1:
+        return 0.02, 0.02, "left", "bottom"
+    if case_index == 2:
+        return 0.98, 0.02, "right", "bottom"
+    return 0.02, 0.98, "left", "top"
 
 
 def _compute_panel_bounds(
@@ -715,26 +773,14 @@ def _write_agreement_summary(case_df: pd.DataFrame) -> None:
 def _build_manuscript_figure(case_df: pd.DataFrame) -> None:
     if case_df.empty:
         return
-    case_scores = (
-        case_df.groupby("case_rank", as_index=False)
-        .agg(
-            mean_profit_delta=("mean_profit_delta", "first"),
-            mean_route_observability=("mean_route_observability", "max"),
-            domain=("domain", "first"),
-            scenario_name=("scenario_name", "first"),
-        )
-        .sort_values(["mean_profit_delta", "mean_route_observability"], ascending=[False, False])
-    )
-    top_cases = case_scores["case_rank"].tolist()[:2]
-    images = [FIG_DIR / f"rendezvous_case_study_{rank:02d}.png" for rank in top_cases]
-    _stitch_images(images, FIG_DIR / "rendezvous_fig9_case_studies.png", ncols=1, crop_bottom_ratio=0.14)
     mechanism_case = _choose_mechanism_case(case_df)
-    mechanism_image = FIG_DIR / f"rendezvous_case_study_{mechanism_case:02d}.png"
-    if mechanism_image.exists():
-        (FIG_DIR / "rendezvous_fig2_matched_pair_mechanism.png").write_bytes(mechanism_image.read_bytes())
-        source_pdf = mechanism_image.with_suffix(".pdf")
-        if source_pdf.exists():
-            (FIG_DIR / "rendezvous_fig2_matched_pair_mechanism.pdf").write_bytes(source_pdf.read_bytes())
+    case_scores = _case_pair_summary(case_df)
+    top_cases = [rank for rank in case_scores["case_rank"].tolist() if int(rank) != int(mechanism_case)][:2]
+    if len(top_cases) < 2:
+        top_cases = case_scores["case_rank"].tolist()[:2]
+    top_cases = sorted(top_cases)
+    images = [FIG_DIR / f"rendezvous_case_study_{rank:02d}.png" for rank in top_cases]
+    _compose_case_figure(images, FIG_DIR / "rendezvous_fig9_case_studies.png", ncols=1)
 
 
 def _build_appendix_figure(case_df: pd.DataFrame) -> None:
@@ -742,39 +788,71 @@ def _build_appendix_figure(case_df: pd.DataFrame) -> None:
         return
     case_ranks = case_df["case_rank"].drop_duplicates().sort_values().tolist()
     images = [FIG_DIR / f"rendezvous_case_study_{rank:02d}.png" for rank in case_ranks]
-    _stitch_images(images, FIG_DIR / "rendezvous_appendix_case_studies.png", ncols=2, crop_bottom_ratio=0.10)
+    _compose_case_figure(images, FIG_DIR / "rendezvous_appendix_case_studies.png", ncols=2)
 
 
 def _choose_mechanism_case(case_df: pd.DataFrame) -> int:
+    pair = _case_pair_summary(case_df)
+    required = {"obs_gap", "mean_profit_delta", "walk_gap", "dist_gap"}
+    if not required.issubset(set(pair.columns)):
+        return int(case_df["case_rank"].min())
+    focus = pair[
+        (pair["domain"] == "yellow")
+        & (pair["scenario_name"] == "sparse_high_occlusion")
+        & (pair["mean_profit_delta"] > 0.0)
+    ].copy()
+    if focus.empty:
+        focus = pair[pair["mean_profit_delta"] > 0.0].copy()
+    if focus.empty:
+        return int(case_df["case_rank"].min())
+    focus["visual_score"] = 6.0 * focus["obs_gap"] + 1.5 * focus["walk_gap"] + 0.5 * focus["dist_gap"]
+    best = focus.sort_values(["visual_score", "mean_profit_delta", "obs_gap"], ascending=[False, False, False]).iloc[0]
+    return int(best["case_rank"])
+
+
+def _case_pair_summary(case_df: pd.DataFrame) -> pd.DataFrame:
     pair = case_df.pivot_table(
         index=["case_rank", "domain", "scenario_name", "time_slice", "driver_id"],
         columns="route_role",
-        values=["mean_route_observability", "mean_profit_delta"],
+        values=[
+            "mean_route_observability",
+            "mean_route_walk_min",
+            "route_distance_miles",
+            "mean_profit_delta",
+            "rubric_total",
+        ],
         aggfunc="first",
     ).reset_index()
     pair.columns = ["_".join([str(c) for c in col if c != ""]).strip("_") for col in pair.columns]
     required = {
         "mean_route_observability_higher_observability",
         "mean_route_observability_lower_observability",
+        "mean_route_walk_min_higher_observability",
+        "mean_route_walk_min_lower_observability",
+        "route_distance_miles_higher_observability",
+        "route_distance_miles_lower_observability",
         "mean_profit_delta_higher_observability",
     }
     if not required.issubset(set(pair.columns)):
-        return int(case_df["case_rank"].min())
+        return pd.DataFrame()
     pair["obs_gap"] = (
-        pair["mean_route_observability_higher_observability"] - pair["mean_route_observability_lower_observability"]
+        pair["mean_route_observability_higher_observability"]
+        - pair["mean_route_observability_lower_observability"]
     )
-    pair["profit_delta"] = pair["mean_profit_delta_higher_observability"]
-    focus = pair[
-        (pair["domain"] == "yellow")
-        & (pair["scenario_name"] == "sparse_high_occlusion")
-        & (pair["profit_delta"] > 0.0)
-    ].copy()
-    if focus.empty:
-        focus = pair[pair["profit_delta"] > 0.0].copy()
-    if focus.empty:
-        return int(case_df["case_rank"].min())
-    best = focus.sort_values(["profit_delta", "obs_gap"], ascending=[False, False]).iloc[0]
-    return int(best["case_rank"])
+    pair["walk_gap"] = (
+        pair["mean_route_walk_min_higher_observability"]
+        - pair["mean_route_walk_min_lower_observability"]
+    ).abs()
+    pair["dist_gap"] = (
+        pair["route_distance_miles_higher_observability"]
+        - pair["route_distance_miles_lower_observability"]
+    ).abs()
+    pair["mean_profit_delta"] = pair["mean_profit_delta_higher_observability"]
+    pair["visual_score"] = 6.0 * pair["obs_gap"] + 1.5 * pair["walk_gap"] + 0.5 * pair["dist_gap"]
+    return pair.sort_values(
+        ["visual_score", "mean_profit_delta", "obs_gap"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
 
 
 def _stitch_images(
@@ -809,6 +887,39 @@ def _stitch_images(
         image.close()
     canvas.save(output_path)
     canvas.save(output_path.with_suffix(".pdf"), "PDF", resolution=220.0)
+
+
+def _compose_case_figure(image_paths: list[Path], output_path: Path, *, ncols: int) -> None:
+    from PIL import Image
+
+    existing = [path for path in image_paths if path.exists()]
+    if not existing:
+        return
+    images = [Image.open(path).convert("RGBA") for path in existing]
+    arrays = [np.asarray(image) for image in images]
+    ncols = max(ncols, 1)
+    nrows = math.ceil(len(arrays) / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(12.2, 5.8 * nrows))
+    axes_arr = np.atleast_1d(axes).ravel()
+    for ax, arr in zip(axes_arr, arrays):
+        ax.imshow(arr)
+        ax.axis("off")
+    for ax in axes_arr[len(arrays):]:
+        ax.axis("off")
+    fig.legend(
+        handles=_case_legend_handles(),
+        loc="lower center",
+        ncol=3,
+        frameon=False,
+        fontsize=11.0,
+        bbox_to_anchor=(0.5, 0.015),
+    )
+    fig.subplots_adjust(bottom=0.10, top=0.98, hspace=0.08, wspace=0.04)
+    fig.savefig(output_path, dpi=260, bbox_inches="tight")
+    fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
+    for image in images:
+        image.close()
 
 
 def _as_bool(value: object) -> bool:
