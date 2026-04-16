@@ -25,11 +25,13 @@ venv/
 *.ipynb
 
 # IDE
+.cursor/
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.plan.md
 
 # OS
 .DS_Store
@@ -39,6 +41,8 @@ desktop.ini
 # Results - keep structure, but ignore large CSVs
 results/*.csv
 results/plots/*.png
+results/plots/*.pdf
+results/path_buffer_baseline_config.json
 !results/summary.txt
 
 # Models
@@ -53,3 +57,6 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# Paper export artefacts
+paper/figures/*.pdf
