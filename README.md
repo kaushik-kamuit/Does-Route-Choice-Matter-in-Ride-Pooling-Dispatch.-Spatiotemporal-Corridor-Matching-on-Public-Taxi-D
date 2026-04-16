@@ -1,176 +1,144 @@
-# Route-Aware Matching-Ball Dispatch for Ride-Pooling
+# Does Route Choice Matter in Ride-Pooling Dispatch?
 
-This repository is a realism-first research artifact for route-aware ride-pooling evaluation on NYC TLC 2015 taxi data. The codebase supports both:
+This repository contains the public release for our study of route-aware ride-pooling on public NYC taxi data. The codebase includes the matching-ball retrieval engine, route-ranking models, rolling-horizon dispatch workflow, generated result tables, publication figures, and the manuscript package used for submission.
 
-- a controlled single-driver paired route-choice study
-- a rolling-horizon multi-driver dispatch study
+The core question is simple:
 
-The core question is simple: if a platform evaluates a few genuine road-network alternatives before committing a driver to a route, can it choose a better corridor than the default route, and does that advantage survive once multiple drivers compete for the same rider pool?
+> If a platform evaluates a small set of genuine road-network alternatives before committing a driver to a route, does route choice materially change which riders are realistically matchable and what dispatch outcome the platform achieves?
 
-The current artifact is centered on:
+<p align="center">
+  <img src="results/plots/paper_fig1_dispatch_architecture_v2.png" alt="Dispatch-first architecture" width="88%">
+</p>
 
-- NYC Yellow Taxi 2015 as the primary public domain
-- NYC Green Taxi 2015 as the public robustness domain when the selected four-month window clears the volume thresholds
-- long trips as proxy drivers and short trips as proxy riders
-- H3 corridor indexing plus a matching-ball feasibility filter
-- a LightGBM route-profit predictor trained on 38 features
-- a simple geometric `heuristic_path_buffer` comparator for future full-data reruns
-- a realism-first request-time filter that separates 15-minute index bins from the true matching window
-- a rolling-horizon dispatch simulator with 60-second batching and rider exclusivity
+## Why This Repository Exists
 
-## Headline dispatch result
+Most route-selection pipelines treat the default route as fixed and study matching only after that choice has already been made. This repository studies a narrower but operationally important question:
 
-The main paper scenario uses:
+- alternative feasible routes expose the platform to different rider pools
+- route value should depend on exact-time feasible matching, not corridor exposure alone
+- route-selection gains should still be tested inside shared rolling dispatch, not only in isolated route scoring
 
-- rider pre-sample: `25%`
-- dispatch cadence: `60-second batches`
-- primary retained-sample density: `10%`
-- exact request window: `5 minutes`
-- index lookup: `15-minute bins` with `±1` adjacent bins
-- detour cap: `4 minutes`
+The repository therefore separates:
 
-In the primary Yellow dispatch scenario, operating loss per launched driver is:
+- route-aware candidate construction through H3 corridors
+- exact eligibility through true request-window filtering
+- route scoring through heuristics and learned predictors
+- system-level validation through rolling 60-second dispatch batches with rider exclusivity
 
-| Policy | Yellow dispatch loss/driver |
-|---|---:|
-| `Cold-start` | `$8.08` |
-| `Best heuristic (feasible count)` | `$7.30` |
-| `ML warm-up` | `$7.15` |
-| `Oracle (within route set)` | `$7.02` |
+## Main Findings
 
-The public Green robustness run under the same primary scenario is:
+The headline public-facing results in the submission snapshot are:
 
-| Policy | Green dispatch loss/driver |
-|---|---:|
-| `Cold-start` | `$7.66` |
-| `Best heuristic (feasible count)` | `$7.54` |
-| `ML warm-up` | `$7.27` |
-| `Oracle (within route set)` | `$7.25` |
+| Setting | Cold-start | Best heuristic | ML warm-up | Oracle |
+|---|---:|---:|---:|---:|
+| Yellow primary dispatch loss / driver | `$8.08` | `$7.30` | `$7.15` | `$7.02` |
+| Green primary dispatch loss / driver | `$7.66` | `$7.54` | `$7.27` | `$7.25` |
+| Yellow isolated 10% single-driver loss | `$7.40` | `$6.28` | `$6.17` | `$5.95` |
 
-The larger isolated single-driver study is retained as controlled secondary evidence. There, the same `10%` / `5-minute` scenario moves from `$7.40` loss under cold-start to `$6.17` under warm-up, with the strongest heuristic at `$6.28`.
+What this means in practice:
 
-Important semantic note: `100%` in the retained-sample density sweeps still means the full retained `25%` rider sample used by the artifact, not full city demand.
+- route-aware dispatch clearly improves on default cold-start routing
+- most of the recoverable gain is already captured by strong non-ML heuristics
+- the learned scorer retains a smaller but consistent residual edge
+- exact request-window assumptions materially change the result and should not be conflated with coarse retrieval bins
 
-## Main takeaways
+## Visual Overview
 
-- Route-aware dispatch beats cold-start in both Yellow and Green under the 5-minute exact-window scenario.
-- In rolling dispatch, the main gain comes from route-aware retrieval versus cold-start; the ML edge over the strongest heuristic is positive but modest.
-- Across both dispatch and isolated evaluation, most of the route-aware gain is already recovered by the strongest heuristic, with ML contributing a smaller residual lift.
-- Exact request-window assumptions matter more than moderate detour changes. In Yellow dispatch at `10%` density, ML warm-up scenario profit is `-$8.07` under a 2-minute window, `-$7.15` under 5 minutes, and `-$5.95` under 10 minutes.
-- Temporal holdout model selection uses Jan--Feb 2015 for training and Mar 2015 for validation, reaching `R^2 = 0.801` and `RMSE = $5.85` for tuned LightGBM.
-- These are **scenario profit** values under fixed share/cost assumptions, not calibrated platform margins.
+<p align="center">
+  <img src="results/plots/paper_fig2_matching_ball_mechanism.png" alt="Matching-ball mechanism" width="47%">
+  <img src="results/plots/paper_fig3_dispatch_density.png" alt="Dispatch density response" width="47%">
+</p>
 
-## Repository layout
+<p align="center">
+  <img src="results/plots/paper_fig5_single_driver_mechanism.png" alt="Gain decomposition across evaluation layers" width="47%">
+  <img src="results/plots/paper_fig7_sensitivity.png" alt="Sensitivity analysis" width="47%">
+</p>
+
+These figures illustrate four parts of the story:
+
+- concept: route choice changes candidate exposure before assignment even begins
+- mechanism: retrieved corridor candidates shrink sharply once exact-time and feasibility checks are enforced
+- system-level impact: route-aware policies still matter in rolling dispatch
+- interpretation: most of the gain comes from route-aware retrieval and strong heuristics, with ML adding a smaller residual lift
+
+## Repository Layout
 
 - `src/`: matching, routing, simulation, dispatch, and model-training code
-- `scripts/`: artifact orchestration, summaries, validators, and analysis utilities
-- `visualizations/`: publication and exploratory plotting scripts
+- `scripts/`: artifact runners, validators, summarizers, and analysis utilities
+- `visualizations/`: plotting scripts for publication-facing figures
+- `results/`: checked-in summary tables and publication figures
 - `paper/`: standalone IEEE-style manuscript package
-- `results/`: generated CSV summaries, dispatch tables, paired outcome tables, and publication figures
-- `artifacts/legacy_optimistic_45min/`: archived pre-remediation optimistic artifact
+- `tests/`: artifact and regression sanity checks
+- `osrm/`: local OSRM setup helpers
 
-## Rebuild the artifact
+Large raw and processed data products are intentionally not tracked in the public repository snapshot.
 
-Create a virtual environment, install dependencies, and run:
+## Data Sources
+
+The public release is built around openly available trip records and open routing/spatial tools:
+
+- NYC TLC Yellow Taxi trip data
+- NYC TLC Green Taxi trip data
+- OSRM route alternatives
+- H3 spatial indexing
+
+The proxy design uses long taxi trips as driver surrogates and shorter trips as rider requests. Reported values are scenario-profit outputs under fixed assumptions rather than calibrated platform margins.
+
+## Quick Start
+
+Install dependencies:
 
 ```powershell
 python -m pip install -r requirements.txt
+```
+
+Run the full artifact:
+
+```powershell
 python run_all.py
 ```
 
-`run_all.py` now runs both the single-driver realism artifact and the rolling dispatch artifact. The two main entry points are:
-
-- `scripts/run_realism_artifact.py` for the controlled single-driver study
-- `scripts/run_dispatch_artifact.py` for the rolling dispatch study and public-domain robustness
-
-The single-driver artifact:
-
-1. archives the legacy optimistic 45-minute-window outputs
-2. rebuilds the 5-minute training dataset
-3. retrains the profit model with temporal holdout model selection
-4. runs the primary density sweep and stronger-baseline comparisons
-5. runs request-window, detour, H3, and economics sensitivity experiments
-6. regenerates figures, summaries, and the paper validator outputs
-
-The dispatch artifact:
-
-1. reuses the realism-first route-ranking stack
-2. runs rolling 60-second dispatch batches with exact request windows
-3. compares cold-start, the strongest heuristic, ML warm-up, and oracle-style upper bounds
-4. writes dispatch summaries for Yellow primary scenarios and Green domain robustness when available
-
-Useful shortcuts:
+Useful entry points:
 
 ```powershell
-python run_all.py --skip-dataset --skip-train
-python run_all.py --primary-only
 python run_all.py --single-driver-only
 python run_all.py --dispatch-only --sample 1000 --seeds 3
-python run_all.py --sample 5000 --seeds 5
-python scripts\summarize_realism_results.py
 python scripts\run_dispatch_artifact.py --sample 1000 --seeds 3 --primary-only
-python scripts\analyze_strategy_gaps.py
 python visualizations\plot_paper_figures.py
 python scripts\validate_paper_consistency.py
 ```
 
-When you run dispatch smoke tests with a smaller `--sample` or fewer `--seeds`, the dispatch summary CSVs record `driver_sample_size` and `n_seeds` explicitly so they are not mistaken for manuscript-grade runs.
+## Reproducibility
 
-## Key output files
+The reproducibility guide lives in [REPRODUCIBILITY.md](REPRODUCIBILITY.md).
 
-- `results/realism_primary_summary.csv`: main 5-minute single-driver density sweep
-- `results/paper_primary_summary.csv`: single-row single-driver anchor
-- `results/window_sensitivity.csv`: single-driver request-window sensitivity grid
-- `results/detour_sensitivity.csv`: single-driver detour sensitivity at 10% density
-- `results/strong_baseline_comparison.csv`: strongest non-ML baseline comparison
-- `results/temporal_generalization.csv`: Yellow Jan--Feb to Mar temporal holdout metrics
-- `results/h3_corridor_sensitivity.csv`: matching-ball geometry sensitivity at 10% density
-- `results/economics_sensitivity.csv`: economics sensitivity at 10% density
-- `results/runtime_profile.csv`: single-driver compute-time profile
-- `results/dispatch_yellow_primary.csv`: primary rolling-dispatch summary on NYC Yellow
-- `results/dispatch_green_primary.csv`: public robustness-domain dispatch summary on NYC Green when available
-- `results/domain_transfer_summary.csv`: Yellow-vs-Green dispatch comparison
-- `results/domain_temporal_generalization.csv`: per-domain temporal validation metrics
-- `results/dispatch_density_summary.csv`: dispatch density sweep
-- `results/dispatch_service_wait_summary.csv`: dispatch service-rate and wait-time summary
-- `results/dispatch_window_sensitivity.csv`: dispatch request-window sensitivity
-- `results/dispatch_detour_sensitivity.csv`: dispatch detour sensitivity
-- `results/scenario_assumptions.csv`: primary scenario assumptions used by the paper
-- `results/strategy_gap_results.csv`: paired policy-gap statistics
-- `results/model_comparison.csv`: model-family comparison
-- `results/ablation_results.csv`: feature ablation study
-- `results/plots/paper_fig*.png`: current paper-facing figures
+Key checked-in outputs include:
 
-## Core methodology in one paragraph
+- `results/dispatch_yellow_primary.csv`
+- `results/dispatch_green_primary.csv`
+- `results/domain_transfer_summary.csv`
+- `results/dispatch_density_summary.csv`
+- `results/dispatch_window_sensitivity.csv`
+- `results/dispatch_detour_sensitivity.csv`
+- `results/paper_primary_summary.csv`
+- `results/model_comparison.csv`
+- `results/strategy_gap_results.csv`
+- `results/plots/paper_fig*.png`
 
-For each driver trip, the artifact requests three OSRM alternatives, densifies each polyline, maps it to ordered H3 resolution-9 cells, and expands those cells with a one-ring neighborhood to form a route corridor. A `RiderIndex` retrieves riders whose pickup and drop-off cells both lie in the corridor and whose coarse index bins are near the driver departure. A second exact filter then enforces the true request window in minutes. Feasible riders must also satisfy directionality, detour, and seat-capacity checks. The warm-up policy uses a LightGBM model to predict post-matching scenario profit for each route and chooses the best one.
+## Manuscript Package
 
-In the dispatch extension, drivers are launched in rolling 60-second batches, riders enter an open pool when their request batch arrives, expired requests are removed once they exceed the exact request window, and competing drivers claim riders through a greedy exclusivity pass that recomputes later drivers against the reduced rider pool.
-
-## Paper package
-
-The standalone manuscript lives in `paper/`:
+The paper source is in:
 
 - `paper/ieee_submission.tex`
 - `paper/references.bib`
 - `paper/figures/`
 
-The current main paper figure set is:
+The paper package notes are in [paper/README.md](paper/README.md).
 
-- `paper/figures/paper_fig1_dispatch_architecture_v2.png`
-- `paper/figures/paper_fig2_matching_ball_mechanism.png`
-- `paper/figures/paper_fig3_dispatch_density.png`
-- `paper/figures/paper_fig4_cross_domain.png`
-- `paper/figures/paper_fig5_single_driver_mechanism.png`
-- `paper/figures/paper_fig6_model_support.png`
-- `paper/figures/paper_fig7_sensitivity.png`
+## Citation
 
-Upload the contents of `paper/` directly to Overleaf to compile the standalone package.
+If you use this repository, please cite the project metadata in [CITATION.cff](CITATION.cff) and reference the accompanying manuscript package under `paper/`.
 
 ## License
 
-This repository is released under the [MIT License](LICENSE). Third-party data sources, map tiles, OSRM services, and other external resources remain subject to their original terms.
-
-## Legacy note
-
-The repository still contains historical notes and archived outputs from the earlier optimistic artifact. The current publication-facing story, however, is the dispatch-first 5-minute exact-window configuration described above. Use the files in `results/`, `paper/`, and `artifacts/legacy_optimistic_45min/` accordingly.
+This repository is released under the [MIT License](LICENSE).
