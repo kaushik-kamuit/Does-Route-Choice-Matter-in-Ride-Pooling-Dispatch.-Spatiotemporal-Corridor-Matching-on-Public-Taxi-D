@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite it using the metadata below."
+title: "Route-Aware Matching-Ball Dispatch for Ride-Pooling"
+type: software
+authors:
+  - family-names: "Kaushik"
+license: "MIT"
+abstract: "Research artifact for route-aware ride-pooling evaluation on NYC TLC 2015 taxi data, including matching-ball retrieval, route ranking, and rolling-horizon dispatch experiments."
+keywords:
+  - ride-pooling
+  - dispatch
+  - route selection
+  - H3
+  - OSRM
+  - machine learning
+  - transportation systems
+version: "1.0.0"
+date-released: 2026-04-15
