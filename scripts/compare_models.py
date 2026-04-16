@@ -26,17 +26,21 @@ import pandas as pd
 import joblib
 from tqdm import tqdm
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from sklearn.model_selection import GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
 
-DATASET_PATH = ROOT / "data/ml/training_dataset_v2.parquet"
-MODEL_DIR = ROOT / "models"
-MODEL_DIR.mkdir(parents=True, exist_ok=True)
+from data_prep.domain_config import get_domain_config
+from models.evaluation_split import build_eval_split
 
-SPLIT_SEED = 42
-VAL_FRAC = 0.20
-
-EXCLUDE_COLS = {"driver_id", "route_idx", "expected_revenue", "driver_cost", "expected_profit"}
+EXCLUDE_COLS = {
+    "driver_id",
+    "route_idx",
+    "service_month",
+    "service_date",
+    "service_window_pos",
+    "expected_revenue",
+    "driver_cost",
+    "expected_profit",
+}
 TARGET = "expected_profit"
 
 
@@ -45,10 +49,10 @@ def flush():
     sys.stderr.flush()
 
 
-def load_data():
+def load_data(dataset_path: Path):
     print("  Loading dataset...", end=" ")
     flush()
-    df = pd.read_parquet(DATASET_PATH)
+    df = pd.read_parquet(dataset_path)
     feat_cols = [c for c in df.columns if c not in EXCLUDE_COLS]
     print(f"OK  ({len(df):,} rows, {len(feat_cols)} features)")
     flush()
@@ -61,11 +65,11 @@ def split_data(df, feat_cols):
     X = df[feat_cols].values.astype(np.float32)
     y = df[TARGET].values.astype(np.float32)
     groups = df["driver_id"].values
-    gss = GroupShuffleSplit(n_splits=1, test_size=VAL_FRAC, random_state=SPLIT_SEED)
-    train_idx, val_idx = next(gss.split(X, y, groups=groups))
-    print("OK")
+    split = build_eval_split(df)
+    train_idx, val_idx = split.train_idx, split.val_idx
+    print(f"OK ({split.train_label} -> {split.val_label})")
     flush()
-    return X, y, groups, train_idx, val_idx
+    return X, y, groups, train_idx, val_idx, split
 
 
 def rank_accuracy(df, val_idx, y_pred):
@@ -166,6 +170,7 @@ def train_lgb_lambdarank(X, y, df, train_idx, val_idx, feat_cols):
     tr_df = df.iloc[train_idx].reset_index(drop=True)
     va_df = df.iloc[val_idx].reset_index(drop=True)
 
+    va_df["_orig_idx"] = np.arange(len(va_df))
     tr_sorted = tr_df.sort_values("driver_id").reset_index(drop=True)
     va_sorted = va_df.sort_values("driver_id").reset_index(drop=True)
 
@@ -210,7 +215,11 @@ def train_lgb_lambdarank(X, y, df, train_idx, val_idx, feat_cols):
                       valid_sets=[dval], valid_names=["val"],
                       callbacks=[lgb.early_stopping(60, verbose=False), _lgb_progress(200)])
 
-    raw_scores = model.predict(X[val_idx])
+    raw_scores_sorted = model.predict(X_va)
+
+    orig_order = va_sorted["_orig_idx"].values
+    raw_scores = np.empty(len(raw_scores_sorted), dtype=np.float32)
+    raw_scores[orig_order] = raw_scores_sorted
     return model, raw_scores
 
 
@@ -321,15 +330,30 @@ def train_ridge(X, y, train_idx, val_idx, feat_cols):
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Compare model families on the domain-specific training dataset")
+    parser.add_argument("--domain", type=str, default="yellow", choices=["yellow", "green"])
+    parser.add_argument("--dataset", type=str, default="", help="Optional explicit dataset path")
+    args = parser.parse_args()
+
+    domain_config = get_domain_config(args.domain)
+    dataset_path = Path(args.dataset) if args.dataset else domain_config.training_dataset_path()
+    model_dir = ROOT / "models" if args.domain == "yellow" else domain_config.models_dir
+    results_dir = ROOT / "results" if args.domain == "yellow" else domain_config.results_dir
+    model_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
+
     print("=== Model Comparison (Enhanced Features v2) ===\n")
     flush()
-    df, feat_cols = load_data()
-    X, y, groups, train_idx, val_idx = split_data(df, feat_cols)
+    df, feat_cols = load_data(dataset_path)
+    X, y, groups, train_idx, val_idx, split = split_data(df, feat_cols)
 
     print(f"  Train: {len(train_idx):,} rows  Val: {len(val_idx):,} rows")
     n_train_drivers = len(set(groups[train_idx]))
     n_val_drivers = len(set(groups[val_idx]))
     print(f"  Train drivers: {n_train_drivers:,}  Val drivers: {n_val_drivers:,}")
+    print(f"  Split name: {split.split_name}")
     flush()
 
     models_to_train = [
@@ -412,26 +436,25 @@ def main():
     lgb_rank = trained_models.get("LGB LambdaRank")
 
     if lgb_tuned:
-        joblib.dump(lgb_tuned, MODEL_DIR / "profit_model_v2.pkl")
+        joblib.dump(lgb_tuned, model_dir / "profit_model_v2.pkl")
         imp_reg = pd.DataFrame({
             "feature": feat_cols,
             "importance": lgb_tuned.feature_importance(importance_type="gain"),
         }).sort_values("importance", ascending=False)
-        imp_reg.to_csv(MODEL_DIR / "feature_importance_v2.csv", index=False)
-        print(f"\n  Regression model saved:  {MODEL_DIR / 'profit_model_v2.pkl'}")
+        imp_reg.to_csv(model_dir / "feature_importance_v2.csv", index=False)
+        print(f"\n  Regression model saved:  {model_dir / 'profit_model_v2.pkl'}")
 
     if lgb_rank:
-        joblib.dump(lgb_rank, MODEL_DIR / "profit_model_v2_rank.pkl")
+        joblib.dump(lgb_rank, model_dir / "profit_model_v2_rank.pkl")
         imp_rank = pd.DataFrame({
             "feature": feat_cols,
             "importance": lgb_rank.feature_importance(importance_type="gain"),
         }).sort_values("importance", ascending=False)
-        imp_rank.to_csv(MODEL_DIR / "feature_importance_v2_rank.csv", index=False)
-        print(f"  LambdaRank model saved:  {MODEL_DIR / 'profit_model_v2_rank.pkl'}")
+        imp_rank.to_csv(model_dir / "feature_importance_v2_rank.csv", index=False)
+        print(f"  LambdaRank model saved:  {model_dir / 'profit_model_v2_rank.pkl'}")
 
-    (ROOT / "results").mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(results).to_csv(ROOT / "results" / "model_comparison.csv", index=False)
-    print(f"  Comparison saved: {ROOT / 'results' / 'model_comparison.csv'}")
+    pd.DataFrame(results).to_csv(results_dir / "model_comparison.csv", index=False)
+    print(f"  Comparison saved: {results_dir / 'model_comparison.csv'}")
     flush()
 
 

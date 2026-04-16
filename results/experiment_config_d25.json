@@ -1,0 +1,53 @@
+{
+  "scenario_name": "primary",
+  "sample_size": 5000,
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "n_seeds": 5,
+  "density": 0.25,
+  "tag": "d25",
+  "errors": 0,
+  "skipped_no_route": 0,
+  "elapsed_s": 1567.3386409282684,
+  "index_bin_minutes": 15,
+  "candidate_window_bins": 1,
+  "max_request_offset_min": 5,
+  "max_detour_min": 4.0,
+  "h3_resolution": 9,
+  "corridor_k_ring": 1,
+  "corridor_densify_step_m": 80.0,
+  "platform_share": 0.5,
+  "cost_per_mile": 0.67,
+  "urban_speed_kmh": 40.0,
+  "rider_presample_frac": 0.25,
+  "seats": 3,
+  "actual_test_riders_before_density": 2759679,
+  "test_rider_cap": null,
+  "route_categories": {
+    "short": 2072,
+    "medium": 1737,
+    "long": 1191
+  },
+  "strategies": [
+    "coldstart",
+    "random",
+    "heuristic_count",
+    "heuristic_fare_density",
+    "heuristic_feasible_count",
+    "heuristic_profit_proxy",
+    "warmup",
+    "oracle"
+  ],
+  "heuristic_variants": [
+    "heuristic_count",
+    "heuristic_fare_density",
+    "heuristic_feasible_count",
+    "heuristic_profit_proxy"
+  ],
+  "heuristic_selected_strategy": "heuristic_feasible_count"
+}

@@ -1,0 +1,10 @@
+parameter,value
+retained_rider_sample,25%
+headline_matching_window,5 min
+index_bin_minutes,15
+candidate_window_bins,1
+headline_max_detour_min,4
+platform_share,0.50
+cost_per_mile,$0.67
+urban_speed_proxy,40 km/h
+seats,3

@@ -6,6 +6,8 @@ PROC_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 
 for name in ["drivers", "riders"]:
     df = pd.read_parquet(PROC_DIR / f"{name}.parquet")
+    pickup_h3_col = "pickup_h3" if "pickup_h3" in df.columns else "origin_h3"
+    dropoff_h3_col = "dropoff_h3" if "dropoff_h3" in df.columns else "dest_h3"
     print(f"{'='*60}")
     print(f"  {name.upper()}: {df.shape[0]:,} rows x {df.shape[1]} cols")
     print(f"{'='*60}")
@@ -16,8 +18,8 @@ for name in ["drivers", "riders"]:
 
     print(f"\n  Split: train={df[df['split']=='train'].shape[0]:,}  "
           f"test={df[df['split']=='test'].shape[0]:,}")
-    print(f"  H3 pickup cells:  {df['pickup_h3'].nunique():,}")
-    print(f"  H3 dropoff cells: {df['dropoff_h3'].nunique():,}")
+    print(f"  H3 pickup cells:  {df[pickup_h3_col].nunique():,}")
+    print(f"  H3 dropoff cells: {df[dropoff_h3_col].nunique():,}")
 
     print(f"\n  Key stats:")
     for col in ["trip_distance_miles", "fare_amount", "duration_min"]:

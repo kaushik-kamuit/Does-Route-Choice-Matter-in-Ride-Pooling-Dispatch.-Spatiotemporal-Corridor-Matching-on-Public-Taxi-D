@@ -1,0 +1,39 @@
+==============================================================================
+EXTENDED STATISTICAL SUMMARY: Multi-Strategy Comparison
+==============================================================================
+
+--- STRATEGY COMPARISON ---
+Strategy            Mean $   Median $      Std $   Match%      vs CS
+------------------------------------------------------------------------------
+  Cold-Start          1.10      -2.52      12.58    65.9% +$0.00
+  Random              1.35      -2.20      12.33    66.4% +$0.25
+  Heuristic           3.61       0.39      13.67    72.7% +$2.52
+  ML Warm-Up          3.76       0.37      13.71    72.4% +$2.66
+  Oracle              4.35       1.00      13.96    73.5% +$3.25
+
+--- EFFECT SIZE: Warm-Up vs Cold-Start ---
+  Paired t-test:    t=26.711, p=4.77e-147
+  Wilcoxon:         W=383630, p=1.46e-236
+  Cohen's d:        0.2025
+  Effect category:  small
+  Mean difference:  $2.66
+  95% CI (t-based): [$2.47, $2.86]
+  95% CI (boot):    [$2.48, $2.86]
+  N drivers:        5,000
+
+  Drivers better off:  44.1%
+  Drivers worse off:   6.2%
+  Drivers tied:        49.8%
+  Mean gain (winners): $6.66
+  Mean loss (losers):  $-4.39
+
+--- ECONOMIC IMPACT ---
+  Per trip improvement:      $2.66
+  Per 50,000 trips/day:   $133,220
+  Annual (365 days):         $48,625,370
+
+--- ORACLE GAP ANALYSIS ---
+  Oracle advantage vs CS:  $3.25
+  ML captured:             $2.66
+  ML capture rate:         81.9%
+  Remaining headroom:      $0.59

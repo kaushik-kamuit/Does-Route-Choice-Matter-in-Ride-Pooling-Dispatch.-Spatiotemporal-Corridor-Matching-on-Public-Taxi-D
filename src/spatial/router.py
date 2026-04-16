@@ -234,7 +234,7 @@ class OSRMRouter:
         self, origin: LatLng, dest: LatLng, max_alternatives: int = 3
     ) -> list[RouteInfo]:
         """Fetch up to max_alternatives routes (warm-up mode)."""
-        return self._get_routes(origin, dest)
+        return self._get_routes(origin, dest)[:max_alternatives]
 
     def _get_routes(
         self, origin: LatLng, dest: LatLng

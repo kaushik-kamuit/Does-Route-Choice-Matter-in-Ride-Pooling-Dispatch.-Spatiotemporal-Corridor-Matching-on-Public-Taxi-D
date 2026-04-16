@@ -1,0 +1,520 @@
+"""
+Minimal publication figures for the dispatch-first paper.
+
+Design: near-monochrome layout, one accent color for the deployed ML policy,
+generous whitespace, no redundant ink. Fig.1 architecture and Fig.2a corridor
+map are locked pass-through assets.
+
+Outputs PNG+PDF to results/plots/ and paper/figures/.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
+from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+RESULTS_DIR = ROOT / "results"
+PLOTS_DIR = RESULTS_DIR / "plots"
+PAPER_FIG_DIR = ROOT / "paper" / "figures"
+
+DISPATCH_DENSITY_CI_PATH = RESULTS_DIR / "dispatch_density_ci_summary.csv"
+DOMAIN_TRANSFER_CI_PATH = RESULTS_DIR / "domain_transfer_ci_summary.csv"
+FUNNEL_PATH = RESULTS_DIR / "matching_ball_funnel_summary.csv"
+SENSITIVITY_GRID_PATH = RESULTS_DIR / "sensitivity_grid_summary.csv"
+MODEL_CALIBRATION_PATH = RESULTS_DIR / "model_calibration_summary.csv"
+MODEL_COMPARISON_PATH = RESULTS_DIR / "model_comparison.csv"
+GAIN_DECOMP_PATH = RESULTS_DIR / "route_gain_decomposition_summary.csv"
+ML_GAP_COMPARISON_PATH = RESULTS_DIR / "ml_gap_comparison_summary.csv"
+
+ARCHITECTURE_SOURCE = PAPER_FIG_DIR / "paper_fig1_dispatch_architecture_source.png"
+CORRIDOR_MAP_SOURCE = PAPER_FIG_DIR / "paper_fig2a_corridor_map.jpg"
+
+# Minimal palette: charcoal scale + single accent (ML warm-up)
+ACCENT = "#0D5C8C"
+MUTED = {
+    "coldstart": "#2d2d2d",
+    "best_heuristic": "#5c5c5c",
+    "warmup": ACCENT,
+    "oracle": "#9a9a9a",
+}
+POLICY_ORDER = ["coldstart", "best_heuristic", "warmup", "oracle"]
+POLICY_LABELS = {
+    "coldstart": "Cold-start",
+    "best_heuristic": "Best heuristic",
+    "warmup": "ML warm-up",
+    "oracle": "Oracle",
+}
+POLICY_MARKERS = {"coldstart": "o", "best_heuristic": "s", "warmup": "^", "oracle": "D"}
+
+FUNNEL_LABELS = {
+    "retrieved_candidates": "Retrieved",
+    "available_exact_time_candidates": "Exact-time",
+    "feasible_after_detour_seat": "Feasible",
+    "matched_riders": "Matched",
+}
+
+plt.rcParams.update(
+    {
+        "figure.dpi": 160,
+        "savefig.dpi": 400,
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Liberation Serif", "DejaVu Serif"],
+        "font.size": 8.0,
+        "axes.labelsize": 8.0,
+        "axes.titlesize": 8.5,
+        "axes.titleweight": "normal",
+        "axes.edgecolor": "#bfbfbf",
+        "axes.linewidth": 0.6,
+        "xtick.labelsize": 7.5,
+        "ytick.labelsize": 7.5,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": False,
+        "lines.linewidth": 1.35,
+        "lines.markersize": 5.5,
+        "legend.frameon": False,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+    }
+)
+
+
+def _load_csv(path: Path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+    return pd.read_csv(path)
+
+
+def _save(fig: plt.Figure, filename: str, aliases: list[str] | None = None) -> None:
+    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+    PAPER_FIG_DIR.mkdir(parents=True, exist_ok=True)
+    for name in [filename] + (aliases or []):
+        fig.savefig(PLOTS_DIR / name, dpi=300, bbox_inches="tight", facecolor="white", pad_inches=0.02)
+        fig.savefig(PAPER_FIG_DIR / name, dpi=300, bbox_inches="tight", facecolor="white", pad_inches=0.02)
+        pdf_name = Path(name).with_suffix(".pdf").name
+        fig.savefig(PLOTS_DIR / pdf_name, bbox_inches="tight", facecolor="white", pad_inches=0.02)
+        fig.savefig(PAPER_FIG_DIR / pdf_name, bbox_inches="tight", facecolor="white", pad_inches=0.02)
+    plt.close(fig)
+    print(f"  [Saved] {filename}")
+
+
+def _light_grid(ax: plt.Axes, axis: str = "y") -> None:
+    ax.grid(axis=axis, color="#ececec", linewidth=0.7, linestyle="-")
+    ax.set_axisbelow(True)
+
+
+def _selected_dispatch_density() -> pd.DataFrame | None:
+    df = _load_csv(DISPATCH_DENSITY_CI_PATH)
+    if df is None or df.empty:
+        return None
+    df = df[df["domain"] == "yellow"].copy()
+    blocks: list[pd.DataFrame] = []
+    for density in [100, 25, 10]:
+        sub = df[df["density_pct"] == density].copy()
+        if sub.empty:
+            continue
+        keep = sub[sub["policy"].isin(["coldstart", "warmup", "oracle"])].copy()
+        heur = sub[sub["selected_for_paper"] == True].copy()
+        if not heur.empty:
+            heur = heur.head(1).copy()
+            heur["policy"] = "best_heuristic"
+            keep = pd.concat([keep, heur], ignore_index=True)
+        blocks.append(keep)
+    if not blocks:
+        return None
+    out = pd.concat(blocks, ignore_index=True)
+    out["policy"] = pd.Categorical(out["policy"], POLICY_ORDER, ordered=True)
+    return out.sort_values(["density_pct", "policy"])
+
+
+def _selected_primary_by_domain() -> pd.DataFrame | None:
+    df = _load_csv(DOMAIN_TRANSFER_CI_PATH)
+    if df is None or df.empty:
+        return None
+    blocks: list[pd.DataFrame] = []
+    for domain in ["yellow", "green"]:
+        sub = df[df["domain"] == domain].copy()
+        if sub.empty:
+            continue
+        keep = sub[sub["policy"].isin(["coldstart", "warmup", "oracle"])].copy()
+        heur = sub[sub["selected_for_paper"] == True].copy()
+        if not heur.empty:
+            heur = heur.head(1).copy()
+            heur["policy"] = "best_heuristic"
+            keep = pd.concat([keep, heur], ignore_index=True)
+        blocks.append(keep)
+    if not blocks:
+        return None
+    out = pd.concat(blocks, ignore_index=True)
+    out["policy"] = pd.Categorical(out["policy"], POLICY_ORDER, ordered=True)
+    return out.sort_values(["policy", "domain"])
+
+
+def fig1_architecture() -> None:
+    if not ARCHITECTURE_SOURCE.exists():
+        print("  [Fig 1] Skip: architecture source missing")
+        return
+    fig, ax = plt.subplots(figsize=(7.0, 3.25))
+    ax.imshow(plt.imread(ARCHITECTURE_SOURCE))
+    ax.axis("off")
+    _save(fig, "paper_fig1_dispatch_architecture_v2.png")
+
+
+def fig2_matching_ball_mechanism() -> None:
+    funnel = _load_csv(FUNNEL_PATH)
+    if funnel is None or funnel.empty or not CORRIDOR_MAP_SOURCE.exists():
+        print("  [Fig 2] Skip: funnel or map missing")
+        return
+    order = [
+        "retrieved_candidates",
+        "available_exact_time_candidates",
+        "feasible_after_detour_seat",
+        "matched_riders",
+    ]
+    funnel = funnel.set_index("stage").reindex(order).reset_index()
+    vals = funnel["mean_per_launched_driver"].to_numpy(dtype=float)
+    vmax = float(vals.max()) or 1.0
+
+    fig = plt.figure(figsize=(7.4, 3.2))
+    # wspace=0.44 gives the funnel's y-tick labels room without overlapping the map
+    gs = GridSpec(1, 2, width_ratios=[1.45, 1.0], left=0.04, right=0.97, top=0.90, bottom=0.13, wspace=0.44)
+
+    axm = fig.add_subplot(gs[0, 0])
+    axm.imshow(plt.imread(CORRIDOR_MAP_SOURCE))
+    axm.set_xticks([])
+    axm.set_yticks([])
+    axm.set_title("(a) Corridor geometry", loc="left", fontsize=8.5, color="#333", pad=6)
+    for s in axm.spines.values():
+        s.set_linewidth(0.5)
+        s.set_edgecolor("#d0d0d0")
+
+    axb = fig.add_subplot(gs[0, 1])
+    y = np.arange(len(vals))[::-1]
+    colors = ["#e8eef2", "#c5d4de", "#8fa9bc", ACCENT]
+    axb.barh(y, vals, height=0.62, color=colors, edgecolor="white", linewidth=0.5)
+    # Stage names on y-axis (left); values to the right of each bar so nothing collides
+    axb.set_yticks(y)
+    axb.set_yticklabels([FUNNEL_LABELS[s] for s in funnel["stage"]], fontsize=7.5)
+    axb.set_xlabel("Mean per launched driver")
+    axb.set_title("(b) Retrieval funnel", loc="left", fontsize=8.5, color="#333", pad=6)
+    axb.spines["left"].set_visible(False)
+    _light_grid(axb, "x")
+    for yi, v in zip(y, vals):
+        # Value annotation just outside bar end — clear of the bar and the stage label
+        axb.text(v + vmax * 0.035, yi, f"{v:.2f}", ha="left", va="center",
+                 fontsize=7.5, fontweight="semibold", color="#2a2a2a")
+    # Retention percentage arrows between stages
+    for i in range(len(vals) - 1):
+        v0, v1 = vals[i], vals[i + 1]
+        pct = 100.0 * v1 / v0 if v0 else 0.0
+        axb.text(vmax * 1.05, (y[i] + y[i + 1]) / 2, f"{pct:.0f}%", va="center", ha="left", fontsize=6.8, color="#666")
+
+    axb.set_xlim(0, vmax * 1.32)
+    _save(fig, "paper_fig2_matching_ball_mechanism.png")
+
+
+def fig3_dispatch_density() -> None:
+    df = _selected_dispatch_density()
+    if df is None or df.empty:
+        print("  [Fig 3] Skip")
+        return
+
+    dens = [10, 25, 100]
+    x = np.arange(3, dtype=float)
+    # Per-policy jitter so markers never sit on top of each other
+    jitter = {"coldstart": -0.12, "best_heuristic": -0.04, "warmup": 0.04, "oracle": 0.12}
+
+    # ── build cold-start reference per density ──────────────────────────────
+    coldstart_loss: dict[int, float] = {}
+    for d in dens:
+        sub = df[(df["density_pct"] == d) & (df["policy"] == "coldstart")]
+        if not sub.empty:
+            coldstart_loss[d] = -float(sub.iloc[0]["profit_per_launched_driver_mean"])
+
+    # Panel (a): savings vs cold-start — spreads lines apart, makes ML edge readable
+    # Panel (b): throughput (matched riders / driver)
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.9))
+
+    panels = [
+        ("savings", "Savings vs cold-start ($/driver)", "(a) Gain over cold-start"),
+        ("match",   "Matched riders / driver",          "(b) Throughput"),
+    ]
+
+    for ax, (mode, ylab, title) in zip(axes, panels):
+        for pol in POLICY_ORDER:
+            ys = []
+            for d in dens:
+                sub = df[(df["density_pct"] == d) & (df["policy"] == pol)]
+                if sub.empty:
+                    ys.append(float("nan"))
+                    continue
+                r = sub.iloc[0]
+                if mode == "savings":
+                    # cold-start = 0 baseline; other policies show positive savings
+                    val = coldstart_loss.get(d, 0.0) - (-float(r["profit_per_launched_driver_mean"]))
+                else:
+                    val = float(r["mean_matched_riders_per_driver_mean"])
+                ys.append(val)
+
+            xj = x + jitter[pol]
+            ax.plot(
+                xj, ys,
+                marker=POLICY_MARKERS[pol],
+                color=MUTED[pol],
+                linestyle="-",
+                markerfacecolor="white" if pol != "warmup" else ACCENT,
+                markeredgecolor=MUTED[pol],
+                markeredgewidth=1.0,
+                linewidth=1.35 if pol == "warmup" else 0.95,
+                zorder=4 if pol == "warmup" else 2,
+                label=POLICY_LABELS[pol],
+            )
+
+        if mode == "savings":
+            # Cold-start baseline at y = 0
+            ax.axhline(0, color="#aaaaaa", linewidth=0.8, linestyle="--", zorder=1)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(["10 %", "25 %", "100 %"])
+        ax.set_xlabel("Retained-sample density")
+        ax.set_ylabel(ylab)
+        ax.set_title(title, loc="left", fontsize=8.5, color="#333", pad=5)
+        _light_grid(ax, "y")
+
+    axes[1].legend(loc="upper left", fontsize=6.6, ncol=1, columnspacing=0.7,
+                   handletextpad=0.4, handlelength=1.4)
+
+    fig.subplots_adjust(left=0.12, right=0.99, bottom=0.20, top=0.82, wspace=0.40)
+    _save(fig, "paper_fig3_dispatch_density.png")
+
+
+def fig4_cross_domain() -> None:
+    df = _selected_primary_by_domain()
+    if df is None or df.empty:
+        print("  [Fig 4] Skip")
+        return
+    fig, ax = plt.subplots(figsize=(3.5, 2.85))
+    xs = [0, 1]
+    off = np.linspace(-0.11, 0.11, len(POLICY_ORDER))
+    for i, pol in enumerate(POLICY_ORDER):
+        sub = df[df["policy"] == pol].set_index("domain")
+        if "yellow" not in sub.index or "green" not in sub.index:
+            continue
+        yy = -float(sub.loc["yellow", "profit_per_launched_driver_mean"])
+        yg = -float(sub.loc["green", "profit_per_launched_driver_mean"])
+        o = off[i]
+        lw = 1.6 if pol == "warmup" else 1.0
+        ax.plot([xs[0] + o, xs[1] + o], [yy, yg], color=MUTED[pol], linewidth=lw, solid_capstyle="round", zorder=2)
+        ax.scatter([xs[0] + o], [yy], s=22, zorder=4, color=MUTED[pol], edgecolors="white", linewidths=0.5)
+        ax.scatter([xs[1] + o], [yg], s=20, marker="D", zorder=4, color=MUTED[pol], edgecolors="white", linewidths=0.5)
+        ax.text(xs[1] + o + 0.05, yg, POLICY_LABELS[pol], fontsize=6.5, va="center", ha="left", color=MUTED[pol])
+
+    ax.set_xticks(xs)
+    ax.set_xticklabels(["Yellow", "Green"])
+    ax.set_ylabel("Operating loss ($/driver)")
+    ax.set_title("10% stress test", loc="left", fontsize=8.5, color="#333", pad=6)
+    ax.set_xlim(-0.28, 1.35)
+    _light_grid(ax, "y")
+    ax.tick_params(axis="x", length=0, pad=8)
+    fig.subplots_adjust(left=0.18, right=0.96, bottom=0.16, top=0.86)
+    _save(fig, "paper_fig4_cross_domain.png")
+
+
+def fig5_single_driver_mechanism() -> None:
+    decomp = _load_csv(GAIN_DECOMP_PATH)
+    gap = _load_csv(ML_GAP_COMPARISON_PATH)
+    if decomp is None or gap is None or decomp.empty or gap.empty:
+        print("  [Fig 5] Skip")
+        return
+
+    order_d = [10, 25, 100]
+    layers = ["dispatch", "single_driver"]
+    labels_l = {"dispatch": "Disp.", "single_driver": "Isol."}
+
+    fig, axes = plt.subplots(1, 2, figsize=(6.9, 2.85), gridspec_kw={"width_ratios": [1.1, 0.9]})
+
+    # ── Left panel: 100 %-stacked bars (% of oracle-achievable gain) ─────────
+    ax = axes[0]
+    bw = 0.30        # bar width
+    xg = np.arange(len(order_d)) * 1.1   # group centres
+
+    # x-tick positions and labels for all 6 bars: "10%\nD", "10%\nI", etc.
+    tick_positions, tick_labels = [], []
+
+    for gi, d in enumerate(order_d):
+        for li, layer in enumerate(layers):
+            row = decomp[(decomp["density_pct"] == d) & (decomp["layer"] == layer)]
+            if row.empty:
+                continue
+            r = row.iloc[0]
+            hr = float(r["heuristic_recovery"])
+            ml = float(r["ml_residual"])
+            oh = float(r["oracle_headroom"])
+            # Use route_aware_gain as the 100% base (= coldstart - warmup gap denominator).
+            # hr+ml+oh sums to oracle-achievable gain (larger), which inflates the denominator
+            # and understates each component's share of the route-aware improvement.
+            total = float(r["route_aware_gain"])
+            if total == 0:
+                continue
+            hr_p = hr / total * 100
+            ml_p = ml / total * 100
+            oh_p = oh / total * 100
+
+            x0 = xg[gi] + (li - 0.5) * bw * 1.2
+            tick_positions.append(x0)
+            tick_labels.append(f"{d}%\n{labels_l[layer]}")
+
+            ax.bar(x0, hr_p,              width=bw, color="#6b6b6b", edgecolor="white", linewidth=0.4)
+            ax.bar(x0, ml_p, bottom=hr_p, width=bw, color=ACCENT,   edgecolor="white", linewidth=0.4)
+            ax.bar(x0, oh_p, bottom=hr_p + ml_p, width=bw, color="#d4d4d4", edgecolor="white", linewidth=0.4)
+
+            # ML % annotation inside ML segment (in data coordinates — no transform tricks)
+            if ml_p > 6:
+                ax.text(x0, hr_p + ml_p / 2, f"{ml_p:.0f}%",
+                        ha="center", va="center", fontsize=5.8, color="white", fontweight="semibold")
+
+    # All tick positions are in data coordinates — safe with bbox_inches='tight'
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(tick_labels, fontsize=6.2)
+    ax.set_ylim(0, 108)
+    ax.set_ylabel("% of oracle-achievable gain")
+    ax.set_title("(a) Gain composition", loc="left", fontsize=8.5, color="#333", pad=5)
+    _light_grid(ax, "y")
+    leg = [
+        Line2D([0], [0], marker="s", linestyle="none", color="#6b6b6b", markersize=6, label="Heuristic"),
+        Line2D([0], [0], marker="s", linestyle="none", color=ACCENT,   markersize=6, label="ML residual"),
+        Line2D([0], [0], marker="s", linestyle="none", color="#d4d4d4", markersize=6, label="Oracle gap"),
+    ]
+    ax.legend(handles=leg, loc="upper right", fontsize=6.4, frameon=False, ncol=1)
+
+    # ── Right panel: ML residual lift with CIs ───────────────────────────────
+    ax = axes[1]
+    gap_df = gap.sort_values("density_pct", ascending=True)
+    y = np.arange(len(gap_df))
+    dm = gap_df["dispatch_gap_mean"].to_numpy()
+    sm = gap_df["single_driver_gap_mean"].to_numpy()
+    derr = np.vstack([dm - gap_df["dispatch_gap_low"].to_numpy(),
+                      gap_df["dispatch_gap_high"].to_numpy() - dm])
+    serr = np.vstack([sm - gap_df["single_driver_gap_low"].to_numpy(),
+                      gap_df["single_driver_gap_high"].to_numpy() - sm])
+    ax.errorbar(dm, y + 0.13, xerr=derr, fmt="o",  color="#444",  capsize=2.5, markersize=4, elinewidth=0.8, label="Disp. (rolling)")
+    ax.errorbar(sm, y - 0.13, xerr=serr, fmt="D",  color=ACCENT,  capsize=2.5, markersize=4, elinewidth=0.8, label="Isol. (single-driver)")
+    ax.axvline(0, color="#ccc", linestyle="--", linewidth=0.7)
+    ax.set_yticks(y)
+    ax.set_yticklabels([f"{int(v)}%" for v in gap_df["density_pct"]])
+    ax.invert_yaxis()
+    ax.set_xlabel(r"ML warm-up $-$ best heuristic ($/driver)")
+    ax.set_title("(b) Residual ML lift", loc="left", fontsize=8.5, color="#333", pad=5)
+    ax.legend(loc="upper left", fontsize=6.4, frameon=False)
+    _light_grid(ax, "x")
+
+    fig.subplots_adjust(left=0.11, right=0.98, bottom=0.22, top=0.83, wspace=0.44)
+    _save(fig, "paper_fig5_single_driver_mechanism.png")
+
+
+def fig6_model_support() -> None:
+    """Calibration only; feature-family shares are stated in prose (see paper)."""
+    calib = _load_csv(MODEL_CALIBRATION_PATH)
+    comp = _load_csv(MODEL_COMPARISON_PATH)
+    if calib is None or calib.empty:
+        print("  [Fig 6] Skip")
+        return
+    fig, ax = plt.subplots(figsize=(3.35, 3.0))
+    act = calib["actual_mean"].to_numpy(dtype=float)
+    pr = calib["pred_mean"].to_numpy(dtype=float)
+    q25 = calib["pred_q25"].to_numpy(dtype=float)
+    q75 = calib["pred_q75"].to_numpy(dtype=float)
+    lo = min(act.min(), pr.min())
+    hi = max(act.max(), pr.max())
+    ax.fill_between(act, q25, q75, color="#e8eef4", alpha=0.95, linewidth=0)
+    ax.plot([lo, hi], [lo, hi], color="#bbbbbb", linestyle="--", linewidth=0.9, zorder=1)
+    ax.scatter(act, pr, s=22, color=ACCENT, edgecolors="white", linewidths=0.5, zorder=3)
+    ax.plot(act, pr, color=ACCENT, linewidth=0.9, alpha=0.5, zorder=2)
+    ax.set_xlabel(r"Actual mean profit (deciles, \$)")
+    ax.set_ylabel(r"Predicted mean (\$)")
+    ax.set_title("Holdout calibration (Yellow, March)", loc="left", fontsize=8.5, color="#333", pad=6)
+    _light_grid(ax, "both")
+
+    if comp is not None and not comp.empty:
+        mc = comp["model"].astype(str).str.strip()
+        row = comp[mc == "LightGBM (tuned)"]
+        if not row.empty:
+            r = row.iloc[0]
+            r2_val = float(r["r2"])
+            rmse_val = float(r["rmse"])
+            # Two separate calls so the newline is a real vertical offset, not a literal \n
+            ax.text(0.04, 0.97, f"$R^2$={r2_val:.3f}",
+                    transform=ax.transAxes, ha="left", va="top", fontsize=7.0, color="#333")
+            ax.text(0.04, 0.88, f"RMSE=${rmse_val:.2f}",
+                    transform=ax.transAxes, ha="left", va="top", fontsize=7.0, color="#333")
+
+    fig.subplots_adjust(left=0.14, right=0.97, bottom=0.14, top=0.88)
+    _save(fig, "paper_fig6_model_support.png")
+
+
+def fig7_sensitivity() -> None:
+    df = _load_csv(SENSITIVITY_GRID_PATH)
+    if df is None or df.empty:
+        print("  [Fig 7] Skip")
+        return
+    df = df[(df["domain"] == "yellow") & (df["density_pct"] == 10)].copy()
+    if df.empty:
+        return
+    heat = (
+        df.pivot_table(index="max_detour_min", columns="matching_window_min", values="warmup_minus_coldstart_mean", aggfunc="mean")
+        .sort_index(ascending=False)
+        .sort_index(axis=1)
+    )
+    mat = heat.to_numpy(dtype=float)
+    vmax = float(mat.max())
+
+    fig, ax = plt.subplots(figsize=(3.9, 2.95))
+    im = ax.imshow(mat, cmap="Blues", aspect="auto", vmin=float(mat.min()), vmax=vmax)
+    for i, det in enumerate(heat.index):
+        for j, win in enumerate(heat.columns):
+            val = float(heat.loc[det, win])
+            tc = "#f8fafc" if val >= 0.72 * vmax else "#0f172a"
+            ax.text(j, i, f"+{val:.2f}", ha="center", va="center", fontsize=7.5, color=tc, fontweight="normal")
+    if 4 in heat.index and 5 in heat.columns:
+        i, j = list(heat.index).index(4), list(heat.columns).index(5)
+        ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, edgecolor=ACCENT, linewidth=2.0))
+    ax.set_xticks(np.arange(len(heat.columns)))
+    ax.set_xticklabels([str(int(v)) for v in heat.columns])
+    ax.set_yticks(np.arange(len(heat.index)))
+    ax.set_yticklabels([str(int(v)) for v in heat.index])
+    ax.set_xlabel("Request window (min)")
+    ax.set_ylabel("Detour cap (min)")
+    ax.set_title(r"Warm-up gain vs cold-start (\$/driver)", loc="left", fontsize=8.5, color="#333", pad=6)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+    cbar.ax.set_ylabel("", rotation=0)
+    cbar.set_ticks([float(mat.min()), vmax])
+    fig.subplots_adjust(left=0.14, right=0.88, bottom=0.18, top=0.84)
+    _save(fig, "paper_fig7_sensitivity.png")
+
+
+def main() -> None:
+    print("Generating minimal paper figures...")
+    fig1_architecture()
+    fig2_matching_ball_mechanism()
+    fig3_dispatch_density()
+    # fig4_cross_domain() removed — cross-domain data is fully covered by Table tab:domain_transfer
+    fig5_single_driver_mechanism()
+    fig6_model_support()
+    fig7_sensitivity()
+    print(f"Done -> {PLOTS_DIR} and {PAPER_FIG_DIR}")
+
+
+if __name__ == "__main__":
+    main()

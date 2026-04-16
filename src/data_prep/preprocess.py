@@ -11,9 +11,9 @@ Steps:
   7. Save to data/processed/
 
 Output:
-  data/processed/drivers.parquet  -- all driver trips (~2-3M rows)
+  data/processed/<domain>/drivers.parquet  -- all driver trips
     Columns use origin/dest naming: origin_lat, origin_lng, dest_lat, dest_lng, origin_h3, dest_h3
-  data/processed/riders.parquet   -- sampled rider trips (~10M rows)
+  data/processed/<domain>/riders.parquet   -- sampled rider trips
     Columns use pickup/dropoff naming: pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, pickup_h3, dropoff_h3
 """
 
@@ -26,10 +26,10 @@ import h3
 import numpy as np
 import pandas as pd
 
-YEAR = 2015
-MONTHS = [1, 2, 3, 4]
-TRAIN_MONTHS = {1, 2, 3}
-TEST_MONTHS = {4}
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+from data_prep.domain_config import DEFAULT_MONTH_WINDOW, YEAR, get_domain_config
 
 H3_RESOLUTION = 9
 RIDER_SAMPLE_FRAC = 0.25
@@ -38,9 +38,6 @@ RIDER_SAMPLE_SEED = 42
 DRIVER_MIN_MILES = 10.0
 RIDER_MIN_MILES = 0.5
 RIDER_MAX_MILES = 10.0
-
-RAW_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
-OUT_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 
 DRIVER_COLUMN_RENAMES = {
     "pickup_lat": "origin_lat",
@@ -51,25 +48,29 @@ DRIVER_COLUMN_RENAMES = {
     "dropoff_h3": "dest_h3",
 }
 
-COLUMN_RENAMES = {
-    "tpepPickupDateTime": "pickup_datetime",
-    "tpepDropoffDateTime": "dropoff_datetime",
-    "startLat": "pickup_lat",
-    "startLon": "pickup_lng",
-    "endLat": "dropoff_lat",
-    "endLon": "dropoff_lng",
-    "tripDistance": "trip_distance_miles",
-    "fareAmount": "fare_amount",
-    "tipAmount": "tip_amount",
-    "totalAmount": "total_amount",
-    "passengerCount": "passenger_count",
-}
-
-
-def load_raw(month: int) -> pd.DataFrame:
-    path = RAW_DIR / f"yellow_tripdata_{YEAR}-{month:02d}.parquet"
+def load_raw(config, month: int) -> pd.DataFrame:
+    path = config.raw_month_path(month)
     df = pd.read_parquet(path)
-    return df.rename(columns=COLUMN_RENAMES)
+    return df.rename(columns=config.column_renames)
+
+
+def filter_partition_month(df: pd.DataFrame, month: int) -> pd.DataFrame:
+    """Keep only rows whose pickup timestamp belongs to the requested month window.
+
+    Some public TLC partition folders contain a small number of spillover rows with
+    pickup timestamps from other months. Filtering here keeps the temporal split
+    deterministic and prevents those rows from contaminating train/test labels.
+    """
+    mask = (
+        (df["pickup_datetime"].dt.year == YEAR)
+        & (df["pickup_datetime"].dt.month == month)
+    )
+    if bool(mask.all()):
+        return df
+    filtered = df.loc[mask].copy()
+    removed = len(df) - len(filtered)
+    print(f"    Month filter: {len(df):,} -> {len(filtered):,} (removed {removed:,} spillover rows)")
+    return filtered
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -138,37 +139,86 @@ def add_h3_cells(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_split_label(df: pd.DataFrame) -> pd.DataFrame:
-    df["split"] = np.where(df["month"].isin(TRAIN_MONTHS), "train", "test")
+def add_split_label(df: pd.DataFrame, *, train_months: set[int], test_months: set[int], month_order: dict[int, int]) -> pd.DataFrame:
+    df["split"] = np.where(df["month"].isin(train_months), "train", "test")
+    ordered = df["month"].astype("Int64").map(month_order)
+    if ordered.isna().any():
+        missing = sorted(set(df.loc[ordered.isna(), "month"].dropna().astype(int).unique().tolist()))
+        raise ValueError(f"Encountered months outside the configured window mapping: {missing}")
+    df["service_window_pos"] = ordered.astype(np.int8)
     return df
 
 
-def process_month(month: int) -> pd.DataFrame:
+def process_month(config, month: int, *, train_months: set[int], test_months: set[int], month_order: dict[int, int]) -> pd.DataFrame:
     print(f"\n  Loading {YEAR}-{month:02d}...")
-    df = load_raw(month)
+    df = load_raw(config, month)
     print(f"    Raw rows: {len(df):,}")
 
+    df = filter_partition_month(df, month)
     df = clean(df)
     df = add_temporal_features(df)
     df = add_h3_cells(df)
-    df = add_split_label(df)
+    df = add_split_label(df, train_months=train_months, test_months=test_months, month_order=month_order)
     return df
 
 
 def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Preprocess raw NYC TLC data into domain-specific driver/rider parquet files")
+    parser.add_argument("--domain", type=str, default="yellow", choices=["yellow", "green"])
+    parser.add_argument(
+        "--months",
+        type=int,
+        nargs="+",
+        default=list(DEFAULT_MONTH_WINDOW),
+        help="Months to preprocess (default: Jan-Apr)",
+    )
+    parser.add_argument(
+        "--train-months",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional explicit train months; default is all but the last processed month",
+    )
+    parser.add_argument(
+        "--test-months",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional explicit test months; default is the last processed month",
+    )
+    args = parser.parse_args()
+
+    config = get_domain_config(args.domain)
+    out_dir = config.processed_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ordered_months = sorted(dict.fromkeys(args.months))
+    if len(ordered_months) < 2:
+        raise ValueError("Expected at least two months so the last month can be held out for test.")
+    train_months = set(args.train_months or ordered_months[:-1])
+    test_months = set(args.test_months or ordered_months[-1:])
+    month_order = {month: idx + 1 for idx, month in enumerate(ordered_months)}
 
     driver_chunks = []
     rider_chunks = []
 
     t_start = time.time()
 
-    for month in MONTHS:
+    print(f"=== Preprocess {config.display_name} ({config.name}) ===")
+
+    for month in ordered_months:
         print(f"\n{'='*60}")
         print(f"MONTH {month}")
         print(f"{'='*60}")
 
-        df = process_month(month)
+        df = process_month(
+            config,
+            month,
+            train_months=train_months,
+            test_months=test_months,
+            month_order=month_order,
+        )
 
         drivers = df.loc[df["trip_distance_miles"] > DRIVER_MIN_MILES].copy()
         drivers.rename(columns=DRIVER_COLUMN_RENAMES, inplace=True)
@@ -197,8 +247,8 @@ def main():
     all_drivers = pd.concat(driver_chunks, ignore_index=True)
     all_riders = pd.concat(rider_chunks, ignore_index=True)
 
-    drv_path = OUT_DIR / "drivers.parquet"
-    rdr_path = OUT_DIR / "riders.parquet"
+    drv_path = out_dir / "drivers.parquet"
+    rdr_path = out_dir / "riders.parquet"
 
     all_drivers.to_parquet(drv_path, compression="snappy", index=False)
     all_riders.to_parquet(rdr_path, compression="snappy", index=False)
@@ -227,7 +277,7 @@ def main():
 
     elapsed = time.time() - t_start
     print(f"\n  Total time: {elapsed:.0f}s ({elapsed/60:.1f} min)")
-    print(f"  Output: {OUT_DIR}")
+    print(f"  Output: {out_dir}")
 
 
 if __name__ == "__main__":

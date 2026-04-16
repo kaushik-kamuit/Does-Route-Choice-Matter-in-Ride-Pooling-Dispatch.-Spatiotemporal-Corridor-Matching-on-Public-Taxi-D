@@ -12,7 +12,7 @@ Reads results/{coldstart,warmup}_outcomes.csv and produces:
 Also writes results/summary.txt with statistical tests.
 
 Usage:
-    python visualizations/plot_comparison.py
+    python old-scripts/plot_comparison.py
 """
 
 from __future__ import annotations
@@ -20,6 +20,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -32,8 +34,14 @@ PLOTS_DIR = RESULTS_DIR / "plots"
 
 CATEGORY_ORDER = ["short", "medium", "long"]
 STRATEGY_ORDER = ["coldstart", "warmup"]
-STRATEGY_LABELS = {"coldstart": "Cold-Start", "warmup": "Warm-Up"}
-PALETTE = {"coldstart": "#4C72B0", "warmup": "#DD8452"}
+STRATEGY_LABELS = {
+    "coldstart": "Cold-Start", "warmup": "Warm-Up",
+    "random": "Random", "heuristic": "Heuristic", "oracle": "Oracle",
+}
+PALETTE = {
+    "coldstart": "#4C72B0", "warmup": "#DD8452",
+    "random": "#8DA0CB", "heuristic": "#66C2A5", "oracle": "#E78AC3",
+}
 
 plt.rcParams.update({
     "figure.dpi": 150,
@@ -127,8 +135,14 @@ def plot_profit_box(cs: pd.DataFrame, wu: pd.DataFrame) -> None:
     for ax, cat in zip(axes, CATEGORY_ORDER):
         sub = df[df["route_length_category"] == cat]
         sns.boxplot(
-            data=sub, x="strategy_label", y="profit",
-            palette=PALETTE.values(), ax=ax, showfliers=False,
+            data=sub,
+            x="strategy_label",
+            y="profit",
+            hue="strategy_label",
+            palette={STRATEGY_LABELS[s]: PALETTE[s] for s in STRATEGY_ORDER},
+            ax=ax,
+            showfliers=False,
+            legend=False,
         )
         ax.set_title(f"{cat.capitalize()} Routes")
         ax.set_xlabel("")

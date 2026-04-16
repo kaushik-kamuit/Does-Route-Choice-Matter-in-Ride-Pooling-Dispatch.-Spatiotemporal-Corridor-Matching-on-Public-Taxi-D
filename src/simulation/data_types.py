@@ -31,6 +31,9 @@ class DriverTrip:
     trip_distance_miles: float = 0.0
     seats: int = 3
     max_detour_minutes: float = 4.0
+    platform_share: float = 0.50
+    cost_per_mile: float = 0.67
+    urban_speed_kmh: float = 40.0
 
     @property
     def route_length_category(self) -> str:
@@ -59,6 +62,7 @@ class DriverOutcome:
     compute_time_s: float
     route_length_category: str
     seed: int = 0
+    hour: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -74,4 +78,5 @@ class DriverOutcome:
             "compute_time_s": self.compute_time_s,
             "route_length_category": self.route_length_category,
             "seed": self.seed,
+            "hour": self.hour,
         }

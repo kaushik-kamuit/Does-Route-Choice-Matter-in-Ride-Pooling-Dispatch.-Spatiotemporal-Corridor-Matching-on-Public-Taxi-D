@@ -9,7 +9,7 @@ Uses GroupShuffleSplit by driver_id to match the training script's split,
 ensuring evaluation is on truly unseen drivers.
 
 Usage:
-    python visualizations/plot_model.py
+    python old-scripts/plot_model.py
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 
 import joblib
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -27,9 +29,9 @@ from sklearn.model_selection import GroupShuffleSplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-DATASET_PATH = ROOT / "data" / "ml" / "training_dataset.parquet"
-MODEL_PATH = ROOT / "models" / "profit_model.pkl"
-IMPORTANCE_PATH = ROOT / "models" / "feature_importance.csv"
+DATASET_PATH = ROOT / "data" / "ml" / "training_dataset_v2.parquet"
+MODEL_PATH = ROOT / "models" / "profit_model_v2.pkl"
+IMPORTANCE_PATH = ROOT / "models" / "feature_importance_v2.csv"
 PLOTS_DIR = ROOT / "results" / "plots"
 
 FEATURE_COLS = [
@@ -43,8 +45,34 @@ FEATURE_COLS = [
     "corridor_demand_density",
     "mean_rider_fare",
     "corridor_fare_density",
-    "feasible_rider_count",
-    "matched_rider_count",
+    "day_of_month",
+    "time_bin_15min",
+    "hour_sin",
+    "hour_cos",
+    "route_sinuosity",
+    "route_avg_speed_ms",
+    "bearing_sin",
+    "bearing_cos",
+    "straight_line_dist_m",
+    "origin_landmark_dist_km",
+    "dest_landmark_dist_km",
+    "origin_jfk_km",
+    "origin_lga_km",
+    "origin_penn_km",
+    "origin_times_sq_km",
+    "dest_jfk_km",
+    "dest_lga_km",
+    "dest_penn_km",
+    "dest_times_sq_km",
+    "corridor_hist_pickups",
+    "corridor_hist_dropoffs",
+    "corridor_hist_pickup_density",
+    "corridor_hist_dropoff_density",
+    "corridor_hist_mean_fare",
+    "corridor_hist_fare_density",
+    "origin_cell_pickups",
+    "origin_cell_mean_fare",
+    "dest_cell_dropoffs",
 ]
 
 SPLIT_SEED = 42

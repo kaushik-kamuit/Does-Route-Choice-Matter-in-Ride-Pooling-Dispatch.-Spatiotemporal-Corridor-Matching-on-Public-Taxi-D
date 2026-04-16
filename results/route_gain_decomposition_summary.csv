@@ -1,0 +1,7 @@
+density_pct,layer,coldstart_profit,heuristic_profit,warmup_profit,oracle_profit,route_aware_gain,heuristic_recovery,ml_residual,oracle_headroom,selected_heuristic_policy
+100,dispatch,-2.6,-0.4,-0.29,0.15,2.31,2.2,0.11000000000000004,0.43999999999999995,heuristic_feasible_count
+100,single_driver,-0.8,0.05,0.2,0.45,1.0,0.8500000000000001,0.15000000000000002,0.25,heuristic_feasible_count
+25,dispatch,-6.87,-5.63,-5.48,-5.3,1.3899999999999997,1.2400000000000002,0.14999999999999947,0.1800000000000006,heuristic_feasible_count
+25,single_driver,-5.26,-3.53,-3.42,-3.08,1.8399999999999999,1.73,0.10999999999999988,0.33999999999999986,heuristic_feasible_count
+10,dispatch,-8.08,-7.3,-7.15,-7.02,0.9299999999999997,0.7800000000000002,0.14999999999999947,0.13000000000000078,heuristic_feasible_count
+10,single_driver,-7.4,-6.28,-6.17,-5.95,1.2300000000000004,1.12,0.11000000000000032,0.21999999999999975,heuristic_feasible_count

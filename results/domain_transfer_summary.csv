@@ -1,0 +1,12 @@
+domain,policy,profit_per_launched_driver_mean,mean_wait_min_mean,mean_matched_riders_per_driver_mean,selected_for_paper
+yellow,coldstart,-8.08,2.51,0.16,False
+yellow,heuristic_count,-7.45,2.53,0.27,False
+yellow,heuristic_fare_density,-7.37,2.53,0.28,False
+yellow,heuristic_feasible_count,-7.3,2.52,0.29,True
+yellow,heuristic_profit_proxy,-7.51,2.53,0.26,False
+yellow,oracle,-7.02,2.54,0.29,False
+yellow,warmup,-7.15,2.56,0.27,False
+green,coldstart,-7.66,1.87,0.02,False
+green,heuristic_feasible_count,-7.54,2.14,0.04,True
+green,oracle,-7.25,2.05,0.29,False
+green,warmup,-7.27,2.07,0.27,False

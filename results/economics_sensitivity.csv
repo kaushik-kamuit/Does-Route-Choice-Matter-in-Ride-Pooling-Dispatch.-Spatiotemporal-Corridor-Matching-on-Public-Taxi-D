@@ -1,0 +1,6 @@
+tag,platform_share,cost_per_mile,warmup_profit
+d10,0.5,0.67,-6.17
+econ_ps40_d10,0.4,0.67,-7.05
+econ_ps60_d10,0.6,0.67,-5.28
+econ_c50_d10,0.5,0.5,-5.46
+econ_c85_d10,0.5,0.85,-6.94
